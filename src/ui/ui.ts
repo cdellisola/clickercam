@@ -1,7 +1,5 @@
-// Sidebar UI. Plain DOM, no framework. Emits intent via callbacks; reflects
-// state via update(). Color panel mirrors a filament-picker workflow: each
-// detected color maps to a filament swatch + a height level (3D relief).
-import type { BaseShapeKind, PaletteEntry, ViewMode } from '../types';
+import type { BaseShapeKind, PaletteEntry, ViewMode, RGB } from '../types';
+import { FILAMENTS } from '../types';
 import type { SectionAxis } from '../viewer/viewer';
 import { SAMPLES } from '../image/sample';
 import type { RgbaImage } from '../image/decode';
@@ -26,6 +24,11 @@ export interface UiState {
   view: ViewMode;
   showSwitch: boolean;
   importMode: 'image' | 'svg' | 'icon' | 'text';
+  currentIconName: string;
+  colorMode: 'normal' | 'limited';
+  limitedColors: RGB[];
+  bodyColorRgb: RGB;
+  paletteOverrides: RGB[];
 }
 
 export interface UiCallbacks {
@@ -50,6 +53,7 @@ export interface UiCallbacks {
   onAiPrompt(): void;
   onSaveProject(): void;
   onLoadProject(file: File): void;
+  onBodyColor(hex: string): void;
 
   // New callbacks for vector modes
   onImportMode(mode: 'image' | 'svg' | 'icon' | 'text'): void;
@@ -62,25 +66,6 @@ export interface UiCallbacks {
   onThemeChange(theme: string): void;
   onGenerate(): void;
 }
-
-// Real filament rolls (Bambu Basic-ish). Color slots are assigned from THIS
-// palette only — no freeform RGB, since each color is a physical spool.
-const FILAMENTS: [string, string][] = [
-  ['Black', '#161616'],
-  ['White', '#f7f7f5'],
-  ['Gray', '#8c8c90'],
-  ['Silver', '#cfd0d2'],
-  ['Red', '#c8102e'],
-  ['Orange', '#ff6a13'],
-  ['Yellow', '#f5c518'],
-  ['Green', '#00ae42'],
-  ['Cyan', '#0086d6'],
-  ['Blue', '#0a5cd5'],
-  ['Purple', '#8e44ad'],
-  ['Pink', '#e6398b'],
-  ['Brown', '#7a5230'],
-  ['Beige', '#d9c8a9'],
-];
 
 const POPULAR_LUCIDE = [
   // File & clipboard
@@ -104,7 +89,7 @@ const POPULAR_LUCIDE = [
   'terminal', 'code', 'settings', 'bell', 'calendar', 'mail',
   'message-circle', 'phone', 'camera', 'image',
   // Symbols & fun
-  'star', 'heart', 'bookmark', 'flag', 'check', 'x', 'plus', 'minus',
+  'star', 'heart', 'circle', 'bookmark', 'flag', 'check', 'x', 'plus', 'minus',
   'refresh-cw', 'rotate-cw', 'flame', 'zap', 'rocket', 'ghost', 'skull',
   'coffee', 'gamepad-2', 'trophy', 'crown',
 ];
@@ -221,11 +206,48 @@ export function createUi(
   sidebarRight.innerHTML = `
     <div class="section legend-section">
       <span class="label">Import Source</span>
-      <div class="tabs four-tabs" id="importTabs" role="tablist">
-        <button class="tab active" data-mode="image" type="button">Image</button>
-        <button class="tab" data-mode="svg" type="button">SVG</button>
-        <button class="tab" data-mode="icon" type="button">Icon</button>
-        <button class="tab" data-mode="text" type="button">Text</button>
+      <div class="import-grid" id="importTabs" role="tablist">
+        <button class="import-card active" data-mode="image" type="button">
+          <span class="card-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+              <circle cx="8.5" cy="8.5" r="1.5"/>
+              <polyline points="21 15 16 10 5 21"/>
+            </svg>
+          </span>
+          <span class="card-label">Image</span>
+        </button>
+        <button class="import-card" data-mode="svg" type="button">
+          <span class="card-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+              <line x1="12" y1="22.08" x2="12" y2="12"/>
+            </svg>
+          </span>
+          <span class="card-label">SVG</span>
+        </button>
+        <button class="import-card" data-mode="icon" type="button">
+          <span class="card-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+              <line x1="9" y1="9" x2="9.01" y2="9"/>
+              <line x1="15" y1="9" x2="15.01" y2="9"/>
+            </svg>
+          </span>
+          <span class="card-label">Icon</span>
+        </button>
+        <button class="import-card" data-mode="text" type="button">
+          <span class="card-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="4 7 4 4 20 4 20 7"/>
+              <line x1="9" y1="20" x2="15" y2="20"/>
+              <line x1="12" y1="4" x2="12" y2="20"/>
+            </svg>
+          </span>
+          <span class="card-label">Text</span>
+        </button>
       </div>
 
       <!-- Image Panel -->
@@ -709,42 +731,83 @@ export function createUi(
 
   let focusedColor = 0;
 
-  function renderPalette(palette: PaletteEntry[]) {
-    const pal = $('palette');
-    if (palette.length === 0) {
-      pal.innerHTML = '<div class="hint">Load an image/vector to pick colors.</div>';
-      return;
+  function getFilamentNameAndHex(rgb: RGB): [string, string] {
+    let bestHex = rgbHex(rgb);
+    let bestName = 'Custom Color';
+    let bestD = Infinity;
+    for (const [name, hex] of FILAMENTS) {
+      const [fr, fg, fb] = hexRgb(hex);
+      const dr = rgb[0] - fr;
+      const dg = rgb[1] - fg;
+      const db = rgb[2] - fb;
+      const d = dr * dr + dg * dg + db * db;
+      if (d < bestD) {
+        bestD = d;
+        bestHex = hex;
+        bestName = name;
+      }
     }
-    if (focusedColor >= palette.length) focusedColor = 0;
+    return [bestName, bestHex];
+  }
+
+  function renderPalette(palette: PaletteEntry[], bodyColorRgb: RGB, colorMode?: 'normal' | 'limited', limitedColors?: RGB[]) {
+    const pal = $('palette');
     pal.innerHTML = '';
-    palette.forEach((entry, i) => {
-      const row = document.createElement('div');
-      row.className = 'fil-row';
-      row.innerHTML = `
-        <span class="slot-no">${i + 1}</span>
-        <span class="swatch" style="background:${rgbHex(entry.quantRgb)}" title="detected color"></span>
-        <span class="arrow">→</span>
-        <span class="fil-chip" title="filament" style="background:${rgbHex(entry.filamentRgb)}"></span>
-        <span class="cov">${Math.round(entry.coverage * 100)}%</span>
-        <span class="stepper" title="3D height (raises this color)">
-          <button class="dn">−</button>
-          <span class="lvl">${entry.heightLevel}</span>
-          <button class="up">+</button>
-        </span>`;
-      row.addEventListener('pointerdown', (e) => {
-        if ((e.target as HTMLElement).closest('.stepper')) return;
-        focusedColor = i;
-        pal.querySelectorAll('.fil-row').forEach((x) => x.classList.remove('focused'));
-        row.classList.add('focused');
-      });
-      row.querySelector<HTMLButtonElement>('.up')!.addEventListener('click', () =>
-        cb.onHeight(i, entry.heightLevel + 1)
-      );
-      row.querySelector<HTMLButtonElement>('.dn')!.addEventListener('click', () =>
-        cb.onHeight(i, entry.heightLevel - 1)
-      );
-      pal.appendChild(row);
+
+    // ALWAYS render the Outline/Body row.
+    const bodyRow = document.createElement('div');
+    bodyRow.className = 'fil-row body-row';
+    bodyRow.innerHTML = `
+      <span class="slot-no">Outl</span>
+      <span class="swatch" style="background:#787c82; opacity: 0.5;" title="default outline color"></span>
+      <span class="arrow">→</span>
+      <span class="fil-chip" title="outline filament color" style="background:${rgbHex(bodyColorRgb)}"></span>
+      <span class="cov">Outline</span>
+      <span class="stepper" style="visibility: hidden;"></span>
+    `;
+    bodyRow.addEventListener('pointerdown', () => {
+      focusedColor = -1;
+      pal.querySelectorAll('.fil-row').forEach((x) => x.classList.remove('focused'));
+      bodyRow.classList.add('focused');
     });
+    pal.appendChild(bodyRow);
+
+    if (palette.length === 0) {
+      const hint = document.createElement('div');
+      hint.className = 'hint';
+      hint.textContent = 'Load an image/vector to pick colors.';
+      pal.appendChild(hint);
+    } else {
+      if (focusedColor !== -1 && focusedColor >= palette.length) focusedColor = 0;
+      palette.forEach((entry, i) => {
+        const row = document.createElement('div');
+        row.className = 'fil-row';
+        row.innerHTML = `
+          <span class="slot-no">${i + 1}</span>
+          <span class="swatch" style="background:${rgbHex(entry.quantRgb)}" title="detected color"></span>
+          <span class="arrow">→</span>
+          <span class="fil-chip" title="filament" style="background:${rgbHex(entry.filamentRgb)}"></span>
+          <span class="cov">${Math.round(entry.coverage * 100)}%</span>
+          <span class="stepper" title="3D height (raises this color)">
+            <button class="dn">−</button>
+            <span class="lvl">${entry.heightLevel}</span>
+            <button class="up">+</button>
+          </span>`;
+        row.addEventListener('pointerdown', (e) => {
+          if ((e.target as HTMLElement).closest('.stepper')) return;
+          focusedColor = i;
+          pal.querySelectorAll('.fil-row').forEach((x) => x.classList.remove('focused'));
+          row.classList.add('focused');
+        });
+        row.querySelector<HTMLButtonElement>('.up')!.addEventListener('click', () =>
+          cb.onHeight(i, entry.heightLevel + 1)
+        );
+        row.querySelector<HTMLButtonElement>('.dn')!.addEventListener('click', () =>
+          cb.onHeight(i, entry.heightLevel - 1)
+        );
+        pal.appendChild(row);
+      });
+    }
 
     // Filament palette: pick a roll for the selected slot.
     const lib = document.createElement('div');
@@ -754,25 +817,66 @@ export function createUi(
       <div class="lib-row"></div>
     `;
     const libRow = lib.querySelector('.lib-row')!;
-    FILAMENTS.forEach(([name, hex]) => {
+    
+    const chipsToRender: [string, string][] = [];
+    if (colorMode === 'limited' && limitedColors && limitedColors.length > 0) {
+      limitedColors.forEach((rgb) => {
+        chipsToRender.push(getFilamentNameAndHex(rgb));
+      });
+    } else {
+      FILAMENTS.forEach(([name, hex]) => {
+        chipsToRender.push([name, hex]);
+      });
+    }
+
+    chipsToRender.forEach(([name, hex]) => {
       const chip = document.createElement('button');
       chip.className = 'lib-chip';
       chip.style.background = hex;
       chip.title = name;
       chip.addEventListener('click', () => {
-        if (focusedColor >= 0 && focusedColor < palette.length) cb.onFilament(focusedColor, hex);
+        if (focusedColor === -1) {
+          cb.onBodyColor(hex);
+        } else if (focusedColor >= 0 && focusedColor < palette.length) {
+          cb.onFilament(focusedColor, hex);
+        }
       });
       libRow.appendChild(chip);
     });
     pal.appendChild(lib);
 
-    pal.querySelectorAll<HTMLElement>('.fil-row')[focusedColor]?.classList.add('focused');
+    const rows = pal.querySelectorAll<HTMLElement>('.fil-row');
+    if (focusedColor === -1) {
+      bodyRow.classList.add('focused');
+    } else if (focusedColor >= 0 && focusedColor < palette.length) {
+      const targetRow = Array.from(rows).find(r => !r.classList.contains('body-row') && r.querySelector('.slot-no')?.textContent === String(focusedColor + 1));
+      if (targetRow) targetRow.classList.add('focused');
+    }
   }
 
   function update(state: UiState) {
     statusEl.innerHTML = (state.building ? '<span class="spinner"></span> ' : '') + state.status;
 
-    ccount.value = String(state.colorCount);
+    if (state.colorMode === 'limited') {
+      ccount.disabled = true;
+      let existingOpt = ccount.querySelector(`option[value="${state.colorCount}"]`);
+      if (!existingOpt) {
+        const opt = document.createElement('option');
+        opt.value = String(state.colorCount);
+        opt.textContent = `${state.colorCount} Colors (Limited)`;
+        ccount.appendChild(opt);
+      }
+      ccount.value = String(state.colorCount);
+    } else {
+      ccount.disabled = false;
+      ccount.querySelectorAll('option').forEach(opt => {
+        if (opt.textContent?.includes('Limited')) {
+          opt.remove();
+        }
+      });
+      ccount.value = String(state.colorCount);
+    }
+
     smooth.value = String(state.smoothing);
     $('smoothVal').textContent = Math.round(state.smoothing * 100) + '%';
     width.value = String(state.capWidthMm);
@@ -788,7 +892,7 @@ export function createUi(
     $<HTMLInputElement>('showswitch').checked = state.showSwitch;
 
     // Update Import Mode tabs and panels
-    for (const b of importTabs.querySelectorAll<HTMLElement>('button')) {
+    for (const b of importTabs.querySelectorAll<HTMLElement>('[data-mode]')) {
       b.classList.toggle('active', b.dataset.mode === state.importMode);
     }
     $('imagePanel').hidden = state.importMode !== 'image';
@@ -829,12 +933,23 @@ export function createUi(
     if (overlay) {
       if (state.building) {
         overlay.removeAttribute('hidden');
+        const textEl = overlay.querySelector('.loading-text');
+        if (textEl) {
+          textEl.textContent = state.status;
+        }
       } else {
         overlay.setAttribute('hidden', '');
       }
     }
 
-    renderPalette(state.palette);
+    renderPalette(state.palette, state.bodyColorRgb, state.colorMode, state.limitedColors);
+
+    // Highlight the active icon in the Lucide gallery
+    if (state.currentIconName) {
+      galleryEl.querySelectorAll('.icon').forEach((n) => {
+        n.classList.toggle('active', n.getAttribute('title') === state.currentIconName);
+      });
+    }
   }
 
   return { update, hexRgb, addUploadedSvg, addFontOption: (font: FontOption) => { addFontOption(font); fontSelect.value = font.id; } };

@@ -18,7 +18,7 @@ interface Box {
 // they don't quantize into a light "halo" ring around the subject.
 const ALPHA_THRESHOLD = 170;
 
-export function quantize(img: RgbaImage, colorCount: number): QuantizeResult {
+export function quantize(img: RgbaImage, colorCount: number, customColors?: RGB[]): QuantizeResult {
   const { data, width, height } = img;
   const n = width * height;
 
@@ -39,6 +39,50 @@ export function quantize(img: RgbaImage, colorCount: number): QuantizeResult {
   const indices = new Int16Array(n).fill(-1);
   if (fgR.length === 0) {
     return { palette: [], indices, width, height };
+  }
+
+  if (customColors && customColors.length > 0) {
+    const counts = new Array(customColors.length).fill(0);
+
+    for (let i = 0; i < fgR.length; i++) {
+      let bestK = 0;
+      let bestD = Infinity;
+      for (let k = 0; k < customColors.length; k++) {
+        const [pr, pg, pb] = customColors[k];
+        const dr = fgR[i] - pr;
+        const dg = fgG[i] - pg;
+        const db = fgB[i] - pb;
+        const d = dr * dr + dg * dg + db * db;
+        if (d < bestD) {
+          bestD = d;
+          bestK = k;
+        }
+      }
+      indices[fgPixel[i]] = bestK;
+      counts[bestK]++;
+    }
+
+    const palette: { rgb: RGB; coverage: number }[] = [];
+    const oldToNewIdx = new Map<number, number>();
+
+    for (let k = 0; k < customColors.length; k++) {
+      if (counts[k] > 0) {
+        oldToNewIdx.set(k, palette.length);
+        palette.push({
+          rgb: customColors[k],
+          coverage: counts[k] / fgR.length,
+        });
+      }
+    }
+
+    for (let i = 0; i < n; i++) {
+      const idx = indices[i];
+      if (idx !== -1) {
+        indices[i] = oldToNewIdx.has(idx) ? oldToNewIdx.get(idx)! : -1;
+      }
+    }
+
+    return { palette, indices, width, height };
   }
 
   // Median cut.

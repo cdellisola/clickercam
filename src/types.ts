@@ -3,6 +3,23 @@
 
 export type RGB = [number, number, number];
 
+export const FILAMENTS: [string, string][] = [
+  ['Black', '#161616'],
+  ['White', '#f7f7f5'],
+  ['Gray', '#8c8c90'],
+  ['Silver', '#cfd0d2'],
+  ['Red', '#c8102e'],
+  ['Orange', '#ff6a13'],
+  ['Yellow', '#f5c518'],
+  ['Green', '#00ae42'],
+  ['Cyan', '#0086d6'],
+  ['Blue', '#0a5cd5'],
+  ['Purple', '#8e44ad'],
+  ['Pink', '#e6398b'],
+  ['Brown', '#7a5230'],
+  ['Beige', '#d9c8a9'],
+];
+
 /** A closed 2D ring (list of [x,y]); EvenOdd fill handles outer/hole nesting. */
 export type Ring = [number, number][];
 

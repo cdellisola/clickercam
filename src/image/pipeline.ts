@@ -3,13 +3,14 @@ import type { RgbaImage } from './decode';
 import { removeBackground } from './matte';
 import { quantize } from './quantize';
 import { traceRegions } from './trace';
-import type { RegionSet } from '../types';
+import type { RegionSet, RGB } from '../types';
 
 export interface ProcessOptions {
   /** Strip a flat background by edge flood-fill (skipped if image has alpha). */
   removeBg?: boolean;
   /** Edge smoothing strength, 0..1 (higher = smoother contours). */
   smoothing?: number;
+  customColors?: RGB[];
 }
 
 export function processImage(
@@ -18,6 +19,6 @@ export function processImage(
   opts: ProcessOptions = {},
 ): RegionSet {
   if (opts.removeBg !== false) removeBackground(img);
-  const q = quantize(img, colorCount);
+  const q = quantize(img, colorCount, opts.customColors);
   return traceRegions(q, opts.smoothing ?? 0.5);
 }

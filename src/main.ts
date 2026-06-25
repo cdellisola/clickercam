@@ -37,6 +37,11 @@ const store = createStore<UiState>({
   view: 'assembled',
   showSwitch: false,
   importMode: 'icon', // Default to 'icon' to show a live clicker immediately
+  currentIconName: 'circle',
+  colorMode: 'normal',
+  limitedColors: [],
+  bodyColorRgb: [120, 124, 130] as RGB,
+  paletteOverrides: [],
 });
 
 // ---- Heavy data kept out of the reactive store ----
@@ -52,6 +57,7 @@ let currentIconText = '';
 let currentIconName = '';
 let currentText = 'A';
 let currentFontId = 'helvetiker-regular';
+let isInitialLoad = true;
 
 const hasImage = () => originalImage !== null;
 function cloneImage(img: RgbaImage): RgbaImage {
@@ -85,6 +91,11 @@ const ui = createUi(sidebarLeft, sidebarRight, statusEl, {
     if (palette[i]) {
       palette[i] = { ...palette[i], filamentRgb: hexToRgb(hex) };
       store.set({ palette });
+      
+      const overrides = store.get().paletteOverrides.slice();
+      overrides[i] = hexToRgb(hex);
+      store.set({ paletteOverrides: overrides });
+
       debouncedRebuild();
     }
   },
@@ -155,10 +166,16 @@ const ui = createUi(sidebarLeft, sidebarRight, statusEl, {
   },
   onSaveProject: () => saveProject(),
   onLoadProject: (file) => loadProject(file),
+  onBodyColor: (hex) => {
+    store.set({ bodyColorRgb: hexToRgb(hex) });
+    debouncedRebuild();
+  },
 
-  // Vector mode callbacks
   onImportMode: (mode) => {
     store.set({ importMode: mode });
+    if (mode !== 'image') {
+      store.set({ colorMode: 'normal' });
+    }
     reprocess();
   },
   onSvgUpload: async (file) => {
@@ -166,6 +183,7 @@ const ui = createUi(sidebarLeft, sidebarRight, statusEl, {
       store.set({ building: true, status: 'Reading SVG…' });
       const svgText = await file.text();
       ui.addUploadedSvg(svgText, file.name.replace(/\.svg$/i, ''));
+      store.set({ building: false });
     } catch (err) {
       store.set({ building: false, status: 'Error reading SVG: ' + String(err) });
     }
@@ -173,20 +191,20 @@ const ui = createUi(sidebarLeft, sidebarRight, statusEl, {
   onSelectSvg: (svgText, name) => {
     currentSvgText = svgText;
     currentSvgName = name;
-    reprocess();
+    store.set({ status: `Selected SVG: ${name}. Click Generate to update.` });
   },
   onSelectIcon: (svgText, name) => {
     currentIconText = svgText;
     currentIconName = name;
-    reprocess();
+    store.set({ currentIconName: name, status: `Selected icon: ${name}. Click Generate to update.` });
   },
   onTextChange: (text) => {
     currentText = text;
-    reprocess();
+    store.set({ status: 'Text updated. Click Generate to update.' });
   },
   onFontSelect: (fontId) => {
     currentFontId = fontId;
-    reprocess();
+    store.set({ status: 'Font changed. Click Generate to update.' });
   },
   onImportFont: async (file) => {
     try {
@@ -194,7 +212,7 @@ const ui = createUi(sidebarLeft, sidebarRight, statusEl, {
       const font = await importFontFile(file);
       ui.addFontOption(font);
       currentFontId = font.id;
-      reprocess();
+      store.set({ building: false, status: `Font ${font.name} imported! Click Generate to update.` });
     } catch (err) {
       store.set({ building: false, status: 'Could not import font: ' + String(err) });
     }
@@ -233,15 +251,16 @@ worker.onmessage = (e: MessageEvent<GeometryResponse>) => {
       });
       // Pick a default popular icon on startup so it builds immediately
       if (store.get().importMode === 'icon' && !currentIconText) {
-        const first = LUCIDE_ICONS.find((ic) => ic.name === 'heart') || LUCIDE_ICONS[0];
+        const first = LUCIDE_ICONS.find((ic) => ic.name === 'circle') || LUCIDE_ICONS[0];
         if (first) {
           currentIconText = buildSvg(first.node);
           currentIconName = first.name;
+          store.set({ currentIconName: first.name });
         }
       }
       reprocess();
       break;
-    case 'parts':
+    case 'parts': {
       latestParts = msg.parts;
       viewer.setParts(msg.parts);
       viewer.setView(store.get().view);
@@ -250,10 +269,13 @@ worker.onmessage = (e: MessageEvent<GeometryResponse>) => {
         hasParts: msg.parts.length > 0,
         status: `Clicker ready ✓  ${msg.parts.length} parts. Orbit to inspect, then Download 3MF.`,
       });
+      isInitialLoad = false;
       break;
+    }
     case 'error':
       store.set({ building: false, status: 'Error: ' + firstLine(msg.message) });
       console.error('[geometry worker]', msg.message);
+      isInitialLoad = false;
       break;
   }
 };
@@ -273,6 +295,7 @@ async function initAssets() {
     worker.postMessage({ type: 'init', socket, stem, switch: sw }, [socket, stem, sw]);
   } catch (err) {
     store.set({ status: 'Failed to load switch assets: ' + String(err) });
+    isInitialLoad = false;
   }
 }
 
@@ -287,12 +310,23 @@ async function openWizard(getter: () => Promise<RgbaImage>) {
       initialColorCount: store.get().colorCount,
       onCancel: () =>
         store.set({ status: originalImage ? 'Ready.' : 'Ready — drop an image or try the sample.' }),
-      onComplete: ({ adjusted, preprocess, colorCount }) => {
+      onComplete: ({ adjusted, preprocess, colorCount, colorMode, limitedColors, paletteOverrides }) => {
         originalImage = adjusted;
+        let defaultBodyColor = store.get().bodyColorRgb;
+        if (colorMode === 'limited' && limitedColors && limitedColors.length > 0) {
+          const blackHex = '#161616';
+          const blackRgb = hexToRgb(blackHex);
+          const hasBlack = limitedColors.some(c => c[0] === blackRgb[0] && c[1] === blackRgb[1] && c[2] === blackRgb[2]);
+          defaultBodyColor = hasBlack ? blackRgb : limitedColors[0];
+        }
         store.set({
           removeBg: !preprocess.keepBackground,
           colorCount,
           topThickness: Math.max(1, preprocess.thicknessMm),
+          colorMode,
+          limitedColors: limitedColors || [],
+          bodyColorRgb: defaultBodyColor,
+          paletteOverrides: paletteOverrides || [],
         });
         reprocess();
       },
@@ -311,6 +345,7 @@ function reprocess() {
     regionSet = processImage(cloneImage(originalImage), s.colorCount, {
       removeBg: s.removeBg,
       smoothing: s.smoothing,
+      customColors: s.colorMode === 'limited' ? s.limitedColors : undefined,
     });
   } else if (s.importMode === 'svg') {
     if (!currentSvgText) {
@@ -326,10 +361,11 @@ function reprocess() {
     }
   } else if (s.importMode === 'icon') {
     if (!currentIconText) {
-      const first = LUCIDE_ICONS.find((ic) => ic.name === 'heart') || LUCIDE_ICONS[0];
+      const first = LUCIDE_ICONS.find((ic) => ic.name === 'circle') || LUCIDE_ICONS[0];
       if (first) {
         currentIconText = buildSvg(first.node);
         currentIconName = first.name;
+        store.set({ currentIconName: first.name });
       }
     }
     if (!currentIconText) {
@@ -355,9 +391,9 @@ function reprocess() {
 
   if (!regionSet) return;
 
-  const palette: PaletteEntry[] = regionSet.regions.map((r) => ({
+  const palette: PaletteEntry[] = regionSet.regions.map((r, i) => ({
     quantRgb: r.quantRgb,
-    filamentRgb: r.quantRgb,
+    filamentRgb: s.paletteOverrides[i] ?? r.quantRgb,
     coverage: r.coverage,
     heightLevel: 0,
   }));
@@ -406,10 +442,14 @@ function rebuild() {
     floorThickness: 1.6,
     keychainHole: s.keychain,
     baseFilamentRgb: s.palette[domIdx]?.filamentRgb ?? ([180, 180, 185] as RGB),
-    bodyColorRgb: [120, 124, 130] as RGB,
+    bodyColorRgb: s.bodyColorRgb ?? ([120, 124, 130] as RGB),
   };
 
-  store.set({ building: true, status: 'Building clicker…' });
+  if (isInitialLoad) {
+    store.set({ status: 'Building clicker…' });
+  } else {
+    store.set({ building: true, status: 'Building clicker…' });
+  }
   worker.postMessage({ type: 'buildClicker', regions, outline: regionSet.outline, params });
 }
 
@@ -492,6 +532,10 @@ function saveProject() {
       currentSvgName,
       currentIconText,
       currentIconName,
+      colorMode: s.colorMode,
+      limitedColors: s.limitedColors,
+      bodyColorRgb: s.bodyColorRgb,
+      paletteOverrides: s.paletteOverrides,
     },
     palette: s.palette, // filament mappings + height levels
     image: originalImage ? imageToDataUrl(originalImage) : null,
@@ -527,6 +571,11 @@ async function loadProject(file: File) {
       tolerance: set.tolerance ?? store.get().tolerance,
       smoothing: set.smoothing ?? store.get().smoothing,
       removeBg: set.removeBg ?? store.get().removeBg,
+      currentIconName: currentIconName || 'circle',
+      colorMode: set.colorMode ?? 'normal',
+      limitedColors: set.limitedColors ?? [],
+      bodyColorRgb: set.bodyColorRgb ?? [120, 124, 130],
+      paletteOverrides: set.paletteOverrides ?? [],
     });
 
     if (set.importMode === 'image' && proj.image) {
