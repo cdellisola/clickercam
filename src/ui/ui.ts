@@ -3,6 +3,8 @@
 // detected color maps to a filament swatch + a height level (3D relief).
 import type { BaseShapeKind, PaletteEntry, ViewMode } from '../types';
 import type { SectionAxis } from '../viewer/viewer';
+import { SAMPLES } from '../image/sample';
+import type { RgbaImage } from '../image/decode';
 
 export interface UiState {
   status: string;
@@ -24,7 +26,7 @@ export interface UiState {
 
 export interface UiCallbacks {
   onUpload(file: File): void;
-  onSample(): void;
+  onSample(creator: () => RgbaImage): void;
   onColorCount(n: number): void;
   onSmoothing(v: number): void;
   onFilament(index: number, hex: string): void;
@@ -74,109 +76,132 @@ const hexRgb = (hex: string): [number, number, number] => [
   parseInt(hex.slice(5, 7), 16),
 ];
 
-export function createUi(sidebar: HTMLElement, statusEl: HTMLElement, cb: UiCallbacks) {
-  sidebar.innerHTML = `
+export function createUi(
+  sidebarLeft: HTMLElement,
+  sidebarRight: HTMLElement,
+  statusEl: HTMLElement,
+  cb: UiCallbacks
+) {
+  // Populate Left Sidebar (Settings + Preview)
+  sidebarLeft.innerHTML = `
     <h1>Clicker Generator <span class="sub">image → printable clicker</span></h1>
 
-    <div class="panel">
-      <h2>1 · Image</h2>
-      <div class="drop" id="drop">Drop an image, or <u>click to browse</u><br/><span style="font-size:11px">PNG with transparency works best — or let us cut the background</span></div>
-      <input type="file" id="file" accept="image/*" hidden />
-      <div class="btn-row" style="margin-top:10px">
-        <button id="sample">Try a sample</button>
+    <div class="section">
+      <span class="label">Preview &amp; View</span>
+      <div class="tabs" id="viewTabs" role="tablist" style="margin-bottom: 12px;">
+        <button class="tab active" data-view="assembled" type="button">Assembled</button>
+        <button class="tab" data-view="exploded" type="button">Exploded</button>
       </div>
-      <label class="check"><input type="checkbox" id="removebg" /> Remove background</label>
+      <div class="switch-row">
+        <span class="switch-label">Show MX switch</span>
+        <label class="toggle"><input id="showswitch" type="checkbox" /><span class="slider"></span></label>
+      </div>
     </div>
 
-    <div class="panel">
-      <h2>2 · Colors → filament</h2>
-      <div class="row">
-        <label>Colors</label>
-        <input type="range" id="ccount" min="2" max="12" step="1" />
-        <span class="val" id="ccountVal"></span>
+    <div class="section">
+      <span class="label">1 · Colors &amp; Smoothing</span>
+      <div class="field">
+        <label for="ccount">Colors</label>
+        <select id="ccount">
+          <option value="2">2 Colors</option>
+          <option value="3">3 Colors</option>
+          <option value="4">4 Colors</option>
+          <option value="5">5 Colors</option>
+          <option value="6">6 Colors</option>
+          <option value="7">7 Colors</option>
+          <option value="8">8 Colors</option>
+          <option value="9">9 Colors</option>
+          <option value="10">10 Colors</option>
+          <option value="11">11 Colors</option>
+          <option value="12">12 Colors</option>
+        </select>
       </div>
-      <div class="row">
-        <label>Smoothing</label>
+      <div class="prow">
+        <label for="smooth">Smoothing</label>
         <input type="range" id="smooth" min="0" max="1" step="0.05" />
         <span class="val" id="smoothVal"></span>
       </div>
-      <div class="palette" id="palette"><div class="hint">Load an image to pick colors.</div></div>
+      <div class="palette" id="palette">
+        <div class="hint">Load an image to pick colors.</div>
+      </div>
     </div>
 
-    <div class="panel">
-      <h2>3 · Shape & size</h2>
-      <div class="row">
-        <label>Base</label>
-        <div class="seg" id="shape" style="flex:1">
-          <button data-shape="outline">Outline</button>
-          <button data-shape="circle">Circle</button>
-          <button data-shape="square">Square</button>
+    <div class="section">
+      <span class="label">2 · Shape &amp; Size</span>
+      <div class="field">
+        <label>Base style</label>
+        <div class="tabs" id="shapeTypeTabs" role="tablist">
+          <button class="tab" data-style="outline" type="button">Outline</button>
+          <button class="tab" data-style="shape" type="button">Shape</button>
         </div>
       </div>
-      <div class="row">
-        <label>Cap width</label>
+      <div class="field" id="shapeSelectField">
+        <label for="shapeSelect">Shape geometry</label>
+        <select id="shapeSelect">
+          <option value="circle">Circle</option>
+          <option value="square">Square</option>
+        </select>
+      </div>
+      <div class="prow">
+        <label for="width">Cap width</label>
         <input type="range" id="width" min="20" max="70" step="1" />
         <span class="val" id="widthVal"></span>
       </div>
-      <div class="row">
-        <label>Top thickness</label>
+      <div class="prow">
+        <label for="topthick">Top thickness</label>
         <input type="range" id="topthick" min="1" max="4" step="0.1" />
         <span class="val" id="topthickVal"></span>
       </div>
-      <div class="row">
-        <label>Image depth</label>
+      <div class="prow">
+        <label for="imgdepth">Image depth</label>
         <input type="range" id="imgdepth" min="0.2" max="3" step="0.1" />
         <span class="val" id="imgdepthVal"></span>
       </div>
-      <div class="row">
-        <label>Fit tolerance</label>
+      <div class="prow">
+        <label for="tol">Fit tolerance</label>
         <input type="range" id="tol" min="0.2" max="0.8" step="0.05" />
         <span class="val" id="tolVal"></span>
       </div>
-      <div class="hint">Backing behind the image, image cut depth, and cap↔body slip-fit gap.</div>
-      <label class="check"><input type="checkbox" id="keychain" /> Keychain loop</label>
-    </div>
-
-    <div class="panel">
-      <h2>4 · Preview & export</h2>
-      <div class="row">
-        <label>View</label>
-        <div class="seg" id="view" style="flex:1">
-          <button data-view="assembled">Assembled</button>
-          <button data-view="exploded">Exploded</button>
-          <button data-view="section">Section</button>
-        </div>
+      <div class="switch-row">
+        <span class="switch-label">Keychain loop</span>
+        <label class="toggle"><input id="keychain" type="checkbox" /><span class="slider"></span></label>
       </div>
-      <label class="check"><input type="checkbox" id="showswitch" /> Show MX switch</label>
-      <div id="sectionCtl" style="display:none">
-        <div class="row">
-          <label>Cut axis</label>
-          <div class="seg" id="secAxis" style="flex:1">
-            <button data-axis="x">X</button>
-            <button data-axis="y">Y</button>
-            <button data-axis="z">Z</button>
-          </div>
-        </div>
-        <div class="row">
-          <label>Cut position</label>
-          <input type="range" id="secPos" min="-1" max="1" step="0.02" value="0" />
-        </div>
-      </div>
-      <button class="primary" id="export" style="width:100%; margin-top:6px">Download 3MF</button>
-      <div class="btn-row" style="margin-top:8px">
-        <button id="render">Save render PNG</button>
-        <button id="aiPrompt">AI prompt</button>
-      </div>
-      <div class="btn-row" style="margin-top:8px">
-        <button id="saveProj">Save project</button>
-        <button id="loadProj">Load project</button>
-        <input type="file" id="projFile" accept="application/json" hidden />
-      </div>
-      <div class="hint">Body holds a Cherry MX switch; cap snaps onto it. Print, then dial in fit.</div>
     </div>
   `;
 
-  const $ = <T extends HTMLElement>(id: string) => sidebar.querySelector<T>('#' + id)!;
+  // Populate Right Sidebar (Import, Export)
+  sidebarRight.innerHTML = `
+    <div class="section">
+      <span class="label">Image Import</span>
+      <div class="drop" id="drop">
+        Drop an image, or <u>click to browse</u><br/>
+        <span style="font-size:10px; opacity:0.8; display:block; margin-top:4px;">PNG with transparency works best</span>
+      </div>
+      <input type="file" id="file" accept="image/*" hidden />
+      <button class="secondary" id="sample" style="width:100%; margin-top:10px">Choose sample image</button>
+      <div class="switch-row">
+        <span class="switch-label">Remove background</span>
+        <label class="toggle"><input id="removebg" type="checkbox" /><span class="slider"></span></label>
+      </div>
+    </div>
+
+    <div class="section">
+      <span class="label">Export</span>
+      <button class="primary" id="export" style="width:100%; margin-bottom:10px">Download 3MF</button>
+      <div class="btn-row" style="margin-bottom:8px">
+        <button id="render" class="secondary">Save render PNG</button>
+        <button id="aiPrompt" class="secondary">AI prompt</button>
+      </div>
+      <div class="btn-row">
+        <button id="saveProj" class="secondary">Save project</button>
+        <button id="loadProj" class="secondary">Load project</button>
+        <input type="file" id="projFile" accept="application/json" hidden />
+      </div>
+    </div>
+  `;
+
+  // Global ID helper
+  const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
   // --- Image ---
   const drop = $('drop');
@@ -196,22 +221,92 @@ export function createUi(sidebar: HTMLElement, statusEl: HTMLElement, cb: UiCall
     const f = e.dataTransfer?.files?.[0];
     if (f) cb.onUpload(f);
   });
-  $('sample').addEventListener('click', () => cb.onSample());
+
+  // Choose Sample Picker Modal
+  $('sample').addEventListener('click', () => {
+    const modal = document.createElement('div');
+    modal.className = 'wz-overlay';
+    modal.innerHTML = `
+      <div class="wz-modal" style="width: 460px;">
+        <div class="wz-head">Choose Sample Image</div>
+        <div class="wz-body">
+          <div class="sample-grid">
+            ${SAMPLES.map((s, idx) => `
+              <div class="sample-item" data-idx="${idx}">
+                <canvas width="80" height="80" style="width: 80px; height: 80px;"></canvas>
+                <span>${s.name}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        <div class="wz-foot">
+          <button class="secondary" id="closeSampleModal" style="width: auto;">Cancel</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    // Draw procedural previews onto canvases
+    SAMPLES.forEach((s, idx) => {
+      const item = modal.querySelector(`.sample-item[data-idx="${idx}"]`)!;
+      const canvas = item.querySelector('canvas')!;
+      const ctx = canvas.getContext('2d')!;
+      const imgData = s.creator();
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = imgData.width;
+      tempCanvas.height = imgData.height;
+      tempCanvas.getContext('2d')!.putImageData(
+        new ImageData(new Uint8ClampedArray(imgData.data), imgData.width, imgData.height),
+        0,
+        0
+      );
+      ctx.drawImage(tempCanvas, 0, 0, canvas.width, canvas.height);
+    });
+
+    modal.addEventListener('click', (e) => {
+      const item = (e.target as HTMLElement).closest('.sample-item') as HTMLElement | null;
+      if (item) {
+        const idx = parseInt(item.dataset.idx!);
+        cb.onSample(SAMPLES[idx].creator);
+        modal.remove();
+      }
+    });
+
+    modal.querySelector('#closeSampleModal')!.addEventListener('click', () => {
+      modal.remove();
+    });
+  });
+
   $<HTMLInputElement>('removebg').addEventListener('change', (e) =>
-    cb.onRemoveBg((e.target as HTMLInputElement).checked),
+    cb.onRemoveBg((e.target as HTMLInputElement).checked)
   );
 
   // --- Colors ---
-  const ccount = $<HTMLInputElement>('ccount');
-  ccount.addEventListener('input', () => cb.onColorCount(+ccount.value));
+  const ccount = $<HTMLSelectElement>('ccount');
+  ccount.addEventListener('change', () => cb.onColorCount(+ccount.value));
   const smooth = $<HTMLInputElement>('smooth');
   smooth.addEventListener('input', () => cb.onSmoothing(+smooth.value));
 
   // --- Shape ---
-  $('shape').addEventListener('click', (e) => {
-    const t = (e.target as HTMLElement).closest('[data-shape]') as HTMLElement | null;
-    if (t) cb.onShape(t.dataset.shape as BaseShapeKind);
+  const shapeTypeTabs = $('shapeTypeTabs');
+  const shapeSelect = $<HTMLSelectElement>('shapeSelect');
+
+  shapeTypeTabs.addEventListener('click', (e) => {
+    const t = (e.target as HTMLElement).closest('[data-style]') as HTMLElement | null;
+    if (!t) return;
+    const style = t.dataset.style;
+    if (style === 'outline') {
+      cb.onShape('outline');
+    } else {
+      cb.onShape(shapeSelect.value as BaseShapeKind);
+    }
   });
+
+  shapeSelect.addEventListener('change', () => {
+    cb.onShape(shapeSelect.value as BaseShapeKind);
+  });
+
+  // --- Size sliders ---
   const width = $<HTMLInputElement>('width');
   width.addEventListener('input', () => cb.onWidth(+width.value));
   const topthick = $<HTMLInputElement>('topthick');
@@ -223,25 +318,18 @@ export function createUi(sidebar: HTMLElement, statusEl: HTMLElement, cb: UiCall
   const keychain = $<HTMLInputElement>('keychain');
   keychain.addEventListener('change', () => cb.onKeychain(keychain.checked));
 
-  // --- View / export ---
-  let secAxis: SectionAxis = 'y';
-  $('view').addEventListener('click', (e) => {
+  // --- View tabs ---
+  const viewTabs = $('viewTabs');
+  viewTabs.addEventListener('click', (e) => {
     const t = (e.target as HTMLElement).closest('[data-view]') as HTMLElement | null;
     if (t) cb.onView(t.dataset.view as ViewMode);
   });
+
   $<HTMLInputElement>('showswitch').addEventListener('change', (e) =>
-    cb.onShowSwitch((e.target as HTMLInputElement).checked),
+    cb.onShowSwitch((e.target as HTMLInputElement).checked)
   );
-  const secPos = $<HTMLInputElement>('secPos');
-  $('secAxis').addEventListener('click', (e) => {
-    const t = (e.target as HTMLElement).closest('[data-axis]') as HTMLElement | null;
-    if (!t) return;
-    secAxis = t.dataset.axis as SectionAxis;
-    for (const b of sidebar.querySelectorAll<HTMLElement>('#secAxis button'))
-      b.classList.toggle('active', b.dataset.axis === secAxis);
-    cb.onSection(secAxis, +secPos.value);
-  });
-  secPos.addEventListener('input', () => cb.onSection(secAxis, +secPos.value));
+
+  // --- Export and Utility actions ---
   $('export').addEventListener('click', () => cb.onExport());
   $('render').addEventListener('click', () => cb.onRenderPng());
   $('aiPrompt').addEventListener('click', () => cb.onAiPrompt());
@@ -252,6 +340,8 @@ export function createUi(sidebar: HTMLElement, statusEl: HTMLElement, cb: UiCall
     if (projFile.files?.[0]) cb.onLoadProject(projFile.files[0]);
     projFile.value = '';
   });
+
+  let focusedColor = 0;
 
   function renderPalette(palette: PaletteEntry[]) {
     const pal = $('palette');
@@ -282,10 +372,10 @@ export function createUi(sidebar: HTMLElement, statusEl: HTMLElement, cb: UiCall
         row.classList.add('focused');
       });
       row.querySelector<HTMLButtonElement>('.up')!.addEventListener('click', () =>
-        cb.onHeight(i, entry.heightLevel + 1),
+        cb.onHeight(i, entry.heightLevel + 1)
       );
       row.querySelector<HTMLButtonElement>('.dn')!.addEventListener('click', () =>
-        cb.onHeight(i, entry.heightLevel - 1),
+        cb.onHeight(i, entry.heightLevel - 1)
       );
       pal.appendChild(row);
     });
@@ -293,8 +383,10 @@ export function createUi(sidebar: HTMLElement, statusEl: HTMLElement, cb: UiCall
     // Filament palette: pick a roll for the selected slot.
     const lib = document.createElement('div');
     lib.className = 'lib';
-    lib.innerHTML =
-      '<div class="lib-label">Filament — pick a color for the selected slot</div><div class="lib-row"></div>';
+    lib.innerHTML = `
+      <div class="lib-label">Filament — pick a color for the selected slot</div>
+      <div class="lib-row"></div>
+    `;
     const libRow = lib.querySelector('.lib-row')!;
     FILAMENTS.forEach(([name, hex]) => {
       const chip = document.createElement('button');
@@ -311,13 +403,10 @@ export function createUi(sidebar: HTMLElement, statusEl: HTMLElement, cb: UiCall
     pal.querySelectorAll<HTMLElement>('.fil-row')[focusedColor]?.classList.add('focused');
   }
 
-  let focusedColor = 0;
-
   function update(state: UiState) {
     statusEl.innerHTML = (state.building ? '<span class="spinner"></span> ' : '') + state.status;
 
     ccount.value = String(state.colorCount);
-    $('ccountVal').textContent = String(state.colorCount);
     smooth.value = String(state.smoothing);
     $('smoothVal').textContent = Math.round(state.smoothing * 100) + '%';
     width.value = String(state.capWidthMm);
@@ -332,15 +421,22 @@ export function createUi(sidebar: HTMLElement, statusEl: HTMLElement, cb: UiCall
     $<HTMLInputElement>('removebg').checked = state.removeBg;
     $<HTMLInputElement>('showswitch').checked = state.showSwitch;
 
-    for (const b of sidebar.querySelectorAll<HTMLElement>('#shape button')) {
-      b.classList.toggle('active', b.dataset.shape === state.baseShape);
+    // Update Shape controls
+    const isOutline = state.baseShape === 'outline';
+    for (const btn of shapeTypeTabs.querySelectorAll<HTMLElement>('button')) {
+      btn.classList.toggle('active', btn.dataset.style === (isOutline ? 'outline' : 'shape'));
     }
-    for (const b of sidebar.querySelectorAll<HTMLElement>('#view button')) {
+
+    if (isOutline) {
+      shapeSelect.disabled = true;
+    } else {
+      shapeSelect.disabled = false;
+      shapeSelect.value = state.baseShape;
+    }
+
+    // Update View tabs
+    for (const b of viewTabs.querySelectorAll<HTMLElement>('button')) {
       b.classList.toggle('active', b.dataset.view === state.view);
-    }
-    ($('sectionCtl') as HTMLElement).style.display = state.view === 'section' ? '' : 'none';
-    for (const b of sidebar.querySelectorAll<HTMLElement>('#secAxis button')) {
-      b.classList.toggle('active', b.dataset.axis === secAxis);
     }
 
     const exportBtn = $<HTMLButtonElement>('export');

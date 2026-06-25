@@ -3,7 +3,6 @@ import { createStore } from './store/store';
 import { createViewer } from './viewer/viewer';
 import { createUi, type UiState } from './ui/ui';
 import { loadFileToImage, type RgbaImage } from './image/decode';
-import { makeSampleImage } from './image/sample';
 import { processImage } from './image/pipeline';
 import { runWizard } from './ui/wizard';
 import { downloadThreeMF } from './export/threemfExport';
@@ -48,13 +47,14 @@ function cloneImage(img: RgbaImage): RgbaImage {
 }
 
 // ---- DOM / subsystems ----
-const sidebar = document.getElementById('sidebar')!;
+const sidebarLeft = document.getElementById('sidebar-left')!;
+const sidebarRight = document.getElementById('sidebar-right')!;
 const statusEl = document.getElementById('status')!;
 const viewer = createViewer(document.getElementById('app')!);
 
-const ui = createUi(sidebar, statusEl, {
+const ui = createUi(sidebarLeft, sidebarRight, statusEl, {
   onUpload: (file) => openWizard(() => loadFileToImage(file)),
-  onSample: () => openWizard(async () => makeSampleImage()),
+  onSample: (creator) => openWizard(async () => creator()),
   onColorCount: (n) => {
     store.set({ colorCount: n });
     debouncedReprocess();
