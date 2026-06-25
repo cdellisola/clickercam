@@ -211,12 +211,37 @@ export function buildClicker(
   let base: Solid = inlayUnion ? track(cap.subtract(inlayUnion)) : cap;
   base = track(base.add(stem));
   if (skirtLen > 0.4) {
-    const skirtInner = track(plate.offset(-skirtThickness, 'Round', 2.0, 64));
+    // Root issue: any 2-D ring-minus-stemZone is algebraically identical to
+    // punching a notch in the border. The only notch-free approach is to ensure
+    // the skirt base plate's outer edge is already OUTSIDE the stem zone, so no
+    // material ever needs to be removed.
+    //
+    // Strategy: expand the skirt plate outward by unioning it with a rounded rect
+    // that is (12 + 2×skirtThickness) wide — guaranteeing the ring's INNER edge
+    // sits exactly at the 12 mm stem-clear boundary. The ring outer edge is wherever
+    // the original plate or this guard square is larger (whichever is further out).
+    // No subtraction → no notch → continuous border.
+    //
+    // Z flush: where skirtBasePlate exceeds the original cap plate we add a thin
+    // backing fill so the skirt top has something solid above it (no ledge/gap).
+    const stemGuard = 12 + 2 * skirtThickness; // inner edge lands exactly at ±6 mm
+    const stemGuardCs = track(CrossSection.square([stemGuard, stemGuard], true));
+    const skirtBasePlate = track(plate.add(stemGuardCs));
+    const skirtInner = track(skirtBasePlate.offset(-skirtThickness, 'Round', 2.0, 64));
     if (!sectionIsEmpty(skirtInner)) {
-      const skirtRing = track(plate.subtract(skirtInner));
+      const skirtRing = track(skirtBasePlate.subtract(skirtInner));
       // +0.3 overlaps up into the plate so the union is volumetric (no coplanar seam).
       const skirt = extrudeAt(skirtRing, skirtLen + 0.3, skirtBottomZ);
       base = track(base.add(skirt));
+      // Fill any area where skirtBasePlate extends beyond the original cap plate,
+      // at the cap-underside level, so the skirt top is flush (no Z gap or step).
+      const skirtExtension = track(skirtBasePlate.subtract(plate));
+      if (!sectionIsEmpty(skirtExtension)) {
+        // Extend the fill all the way from the skirt bottom to the cap top face
+        // so the expanded area is level with the top surface — no step, no ledge.
+        const capFill = extrudeAt(skirtExtension, slabTopZ - skirtBottomZ, skirtBottomZ);
+        base = track(base.add(capFill));
+      }
     }
   }
   parts.unshift(toPart(base, 'cap', 'top', params.baseFilamentRgb, 'top-base'));

@@ -75,21 +75,40 @@ self.onmessage = async (e: MessageEvent<GeometryRequest>) => {
       a.solid.delete();
       b.solid.delete();
 
-      // The switch is DISPLAY-ONLY (a preview toggle) — no CSG. Parse it raw and
-      // shift it by the SAME XY as the stem, so it stays coaxial with the cap/socket;
-      // keep its authored Z (its plate plane is Z = 0, matching the socket top).
+      // The switch is DISPLAY-ONLY (a preview toggle) — no CSG. Parse it raw and place
+      // it in the assembly frame:
+      //  • XY: shift by the SAME amount as the stem so it stays coaxial with cap/socket.
+      //  • Z: AUTO-SEAT — drop the bottom of its widest section (the top-housing
+      //    shoulder that rests on the plate) to Z = 0 (the socket top / plate plane).
+      //    This is robust to the asset's authored Z, and lands the plunger at the cap
+      //    underside (the stem top), so the switch seats in the socket and meets the cap.
       const sw = parse3MF(msg.switch);
       const v = sw.vertProperties;
-      let zmin = Infinity;
-      let zmax = -Infinity;
+      let maxExtent = 0;
       for (let i = 0; i < v.length; i += 3) {
         v[i] -= tcx;
         v[i + 1] -= tcy;
+        const e = Math.max(Math.abs(v[i]), Math.abs(v[i + 1]));
+        if (e > maxExtent) maxExtent = e;
+      }
+      const wide = maxExtent * 0.96; // the top housing is the single widest feature
+      let seatZ = Infinity;
+      for (let i = 0; i < v.length; i += 3) {
+        if (Math.max(Math.abs(v[i]), Math.abs(v[i + 1])) >= wide && v[i + 2] < seatZ) {
+          seatZ = v[i + 2];
+        }
+      }
+      let zmin = Infinity;
+      let zmax = -Infinity;
+      for (let i = 0; i < v.length; i += 3) {
+        v[i + 2] -= seatZ; // raise so the seating shoulder sits at Z = 0
         if (v[i + 2] < zmin) zmin = v[i + 2];
         if (v[i + 2] > zmax) zmax = v[i + 2];
       }
       const switchMesh = { vertProperties: v, triVerts: sw.triVerts, numProp: 3 as const };
-      const switchInfo = `${(sw.triVerts.length / 3) | 0} tris, Z[${zmin.toFixed(2)},${zmax.toFixed(2)}]`;
+      const switchInfo = `${(sw.triVerts.length / 3) | 0} tris, seated +${(-seatZ).toFixed(
+        2,
+      )}mm, Z[${zmin.toFixed(2)},${zmax.toFixed(2)}]`;
       post({ type: 'initDone', socketInfo: a.info, stemInfo: b.info, switchInfo, switchMesh }, [
         switchMesh.vertProperties.buffer,
         switchMesh.triVerts.buffer,
