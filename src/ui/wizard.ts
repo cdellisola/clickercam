@@ -87,7 +87,7 @@ export function runWizard(opts: WizardOpts) {
     ];
   }
 
-  function getQuantizedImage(img: RgbaImage, q: QuantizeResult, overrides: RGB[]): RgbaImage {
+  function getQuantizedImage(img: RgbaImage, q: QuantizeResult, overrides: RGB[], highlightedIdx: number | null = null): RgbaImage {
     const data = new Uint8ClampedArray(img.width * img.height * 4);
     for (let i = 0; i < q.indices.length; i++) {
       const idx = q.indices[i];
@@ -98,104 +98,20 @@ export function runWizard(opts: WizardOpts) {
         data[i * 4 + 3] = 0;
       } else {
         const rgb = overrides[idx] || q.palette[idx].rgb;
-        data[i * 4] = rgb[0];
-        data[i * 4 + 1] = rgb[1];
-        data[i * 4 + 2] = rgb[2];
+        if (highlightedIdx !== null && idx !== highlightedIdx) {
+          // Dim other colors by 65%
+          data[i * 4] = Math.round(rgb[0] * 0.35);
+          data[i * 4 + 1] = Math.round(rgb[1] * 0.35);
+          data[i * 4 + 2] = Math.round(rgb[2] * 0.35);
+        } else {
+          data[i * 4] = rgb[0];
+          data[i * 4 + 1] = rgb[1];
+          data[i * 4 + 2] = rgb[2];
+        }
         data[i * 4 + 3] = 255;
       }
     }
     return { data, width: img.width, height: img.height };
-  }
-
-  function setupInteractivePreview(canvasEl: HTMLCanvasElement, q: QuantizeResult, img: RgbaImage, onUpdate: () => void) {
-    canvasEl.style.cursor = 'pointer';
-    canvasEl.title = 'Click any part of the image to change its color';
-    canvasEl.addEventListener('click', (e) => {
-      const rect = canvasEl.getBoundingClientRect();
-      const clickX = e.clientX - rect.left;
-      const clickY = e.clientY - rect.top;
-      
-      const imgX = Math.floor((clickX / rect.width) * img.width);
-      const imgY = Math.floor((clickY / rect.height) * img.height);
-      
-      if (imgX >= 0 && imgX < img.width && imgY >= 0 && imgY < img.height) {
-        const pixelIdx = imgY * img.width + imgX;
-        const colorIdx = q.indices[pixelIdx];
-        if (colorIdx !== -1) {
-          showColorSelector(colorIdx, e.clientX, e.clientY, onUpdate);
-        }
-      }
-    });
-  }
-
-  function showColorSelector(colorIdx: number, x: number, y: number, onUpdate: () => void) {
-    const existing = document.getElementById('wzColorPopover');
-    if (existing) existing.remove();
-
-    const popover = document.createElement('div');
-    popover.id = 'wzColorPopover';
-    popover.style.position = 'fixed';
-    popover.style.left = `${Math.min(x, window.innerWidth - 220)}px`;
-    popover.style.top = `${Math.min(y, window.innerHeight - 200)}px`;
-    popover.style.background = 'var(--panel)';
-    popover.style.border = '1px solid var(--line)';
-    popover.style.borderRadius = '12px';
-    popover.style.boxShadow = '0 8px 24px rgba(0,0,0,0.3)';
-    popover.style.padding = '12px';
-    popover.style.zIndex = '1000';
-    popover.style.display = 'flex';
-    popover.style.flexDirection = 'column';
-    popover.style.gap = '8px';
-    popover.style.width = '200px';
-
-    const label = document.createElement('div');
-    label.textContent = `Select color for slot ${colorIdx + 1}:`;
-    label.style.fontSize = '12px';
-    label.style.fontWeight = '600';
-    label.style.color = 'var(--text)';
-    popover.appendChild(label);
-
-    const grid = document.createElement('div');
-    grid.style.display = 'grid';
-    grid.style.gridTemplateColumns = 'repeat(4, 1fr)';
-    grid.style.gap = '6px';
-
-    const options = colorMode === 'limited' ? limitedColors : FILAMENTS.map(f => hexRgb(f[1]));
-
-    options.forEach((rgb) => {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.style.width = '32px';
-      btn.style.height = '32px';
-      btn.style.borderRadius = '50%';
-      btn.style.background = rgbHex(rgb);
-      btn.style.border = '1px solid rgba(0,0,0,0.15)';
-      btn.style.cursor = 'pointer';
-      btn.style.transition = 'transform 0.1s';
-      
-      btn.addEventListener('mouseenter', () => btn.style.transform = 'scale(1.1)');
-      btn.addEventListener('mouseleave', () => btn.style.transform = 'none');
-      btn.addEventListener('click', () => {
-        wizardPaletteOverrides[colorIdx] = rgb;
-        popover.remove();
-        onUpdate();
-      });
-      grid.appendChild(btn);
-    });
-
-    popover.appendChild(grid);
-
-    const dismiss = (e: MouseEvent) => {
-      if (!popover.contains(e.target as Node)) {
-        popover.remove();
-        document.removeEventListener('mousedown', dismiss);
-      }
-    };
-    setTimeout(() => {
-      document.addEventListener('mousedown', dismiss);
-    }, 50);
-
-    document.body.appendChild(popover);
   }
 
   function rgbHex(rgb: RGB): string {
@@ -373,8 +289,8 @@ export function runWizard(opts: WizardOpts) {
           </div>
         </div>
         <div class="wz-foot">
-          <button id="wzCancel">Cancel</button>
-          <button class="primary" id="wzNext">Confirm</button>
+          <button id="wzBack">← Back</button>
+          <button class="primary" id="wzNext">Next</button>
         </div>
       </div>`;
 
@@ -432,145 +348,309 @@ export function runWizard(opts: WizardOpts) {
       num.addEventListener('input', () => apply(+num.value));
     }
 
-    overlay.querySelector('#wzCancel')!.addEventListener('click', cancel);
-    overlay.querySelector('#wzNext')!.addEventListener('click', stepConversion);
-  }
-
-  // ---------- Step 2: conversion preview ----------
-  function stepConversion() {
-    overlay.innerHTML = `
-      <div class="wz-modal">
-        <div class="wz-head">${colorMode === 'limited' ? 'Conversion Preview (Limited Colors)' : 'Image Conversion Preview'}</div>
-        <div class="wz-body center">
-          <div class="wz-canvas checker big" id="wzConv"></div>
-        </div>
-        <div class="wz-foot">
-          <button id="wzBack">↻ Try Again</button>
-          <button class="primary" id="wzNext">${colorMode === 'limited' ? 'Confirm' : 'Next'}</button>
-        </div>
-      </div>`;
-    
-    const proc = processed();
-    
-    let q: QuantizeResult | null = null;
-    if (colorMode === 'limited' && limitedColors.length > 0) {
-      q = quantize({ data: new Uint8ClampedArray(proc.data), width: proc.width, height: proc.height }, limitedColors.length, limitedColors);
-      if (wizardPaletteOverrides.length !== q.palette.length) {
-        wizardPaletteOverrides = q.palette.map(p => p.rgb);
-      }
-    }
-
-    const render = () => {
-      const convEl = overlay.querySelector('#wzConv')!;
-      convEl.innerHTML = '';
-      let displayImg = proc;
-      if (colorMode === 'limited' && q) {
-        displayImg = getQuantizedImage(proc, q, wizardPaletteOverrides);
-      }
-      const canvas = imageToCanvas(displayImg);
-      convEl.appendChild(canvas);
-      
-      if (colorMode === 'limited' && q) {
-        setupInteractivePreview(canvas, q, proc, render);
-      }
-    };
-
-    render();
-    
     overlay.querySelector('#wzBack')!.addEventListener('click', () => {
       if (colorMode === 'limited') {
         stepLimitedColorPicker();
       } else {
-        stepPreprocess();
+        stepChooseColorMode();
       }
     });
-
-    overlay.querySelector('#wzNext')!.addEventListener('click', () => {
-      if (colorMode === 'limited') {
-        close();
-        opts.onComplete({
-          adjusted: adjusted(),
-          preprocess: { ...params },
-          colorCount: limitedColors.length,
-          colorMode,
-          limitedColors,
-          paletteOverrides: wizardPaletteOverrides,
-        });
-      } else {
-        stepMatching();
-      }
-    });
+    overlay.querySelector('#wzNext')!.addEventListener('click', stepRecolor);
   }
 
-  // ---------- Step 3: auto matching ----------
-  function stepMatching() {
+  function showWizardColorPicker(
+    triggerEl: HTMLElement,
+    currentHex: string,
+    onSelect: (hex: string) => void
+  ) {
+    const existing = document.getElementById('wzColorPopover');
+    if (existing) existing.remove();
+
+    const rect = triggerEl.getBoundingClientRect();
+    const popover = document.createElement('div');
+    popover.id = 'wzColorPopover';
+    popover.className = 'color-popover';
+    popover.style.left = `${Math.min(rect.left, window.innerWidth - 190)}px`;
+    popover.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 180)}px`;
+
+    const options = colorMode === 'limited' ? limitedColors : FILAMENTS.map(f => hexRgb(f[1]));
+
+    options.forEach((rgb) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.style.background = rgbHex(rgb);
+      if (rgbHex(rgb).toLowerCase() === currentHex.toLowerCase()) {
+        btn.classList.add('active');
+      }
+      btn.addEventListener('click', () => {
+        onSelect(rgbHex(rgb));
+        popover.remove();
+      });
+      popover.appendChild(btn);
+    });
+
+    const dismiss = (e: MouseEvent) => {
+      if (!popover.contains(e.target as Node) && !triggerEl.contains(e.target as Node)) {
+        popover.remove();
+        document.removeEventListener('mousedown', dismiss);
+      }
+    };
+    setTimeout(() => {
+      document.addEventListener('mousedown', dismiss);
+    }, 50);
+
+    document.body.appendChild(popover);
+  }
+
+  // ---------- Step 2: Recolor & Customize ----------
+  function stepRecolor() {
+    const proc = processed();
+    let q: QuantizeResult;
+    
+    const runQuantize = () => {
+      if (colorMode === 'limited') {
+        q = quantize({ data: new Uint8ClampedArray(proc.data), width: proc.width, height: proc.height }, limitedColors.length, limitedColors);
+      } else {
+        q = quantize({ data: new Uint8ClampedArray(proc.data), width: proc.width, height: proc.height }, colorCount);
+      }
+      if (wizardPaletteOverrides.length !== q.palette.length) {
+        wizardPaletteOverrides = q.palette.map(p => p.rgb);
+      }
+    };
+    
+    runQuantize();
+
+    let activeColorIdx = 0;
+    let hoveredColorIdx: number | null = null;
+
     overlay.innerHTML = `
-      <div class="wz-modal">
-        <div class="wz-head">Auto Matching</div>
-        <div class="wz-body col">
-          <div class="seg center" id="wzCount">
-            ${[4, 8, 12].map((n) => `<button data-n="${n}">${n} Color</button>`).join('')}
+      <div class="wz-modal recolor">
+        <div class="wz-head">${colorMode === 'limited' ? 'Filament Customization (Limited Colors)' : 'Filament Customization'}</div>
+        <div class="wz-body">
+          <div class="wz-sidebar">
+            ${colorMode === 'normal' ? `
+              <div class="wz-section">
+                <div class="wz-label">Color Count</div>
+                <div class="seg" id="wzCount" style="margin-bottom: 4px;">
+                  ${[4, 8, 12].map((n) => `<button data-n="${n}">${n} Color</button>`).join('')}
+                </div>
+              </div>
+            ` : ''}
+
+            <div class="wz-section" style="flex-grow: 1;">
+              <div class="wz-label">Color Slots</div>
+              <div class="wz-slots" id="wzSlots"></div>
+            </div>
           </div>
-          <div class="wz-sub">Colors are automatically matched to the chosen number. Click any part of the preview to change its color.</div>
-          <div class="wz-canvas checker" id="wzMatchPrev"></div>
-          <div class="wz-chips" id="wzChips"></div>
+          <div class="wz-preview-area">
+            <div class="wz-canvas checker" id="wzPrevCanvas"></div>
+            <div class="wz-sub">Hover regions to highlight. Click a region or click a slot's swatch to change its color.</div>
+          </div>
         </div>
         <div class="wz-foot">
-          <button id="wzCancel">Cancel</button>
+          <button id="wzBack">← Back</button>
           <button class="primary" id="wzDone">Confirm</button>
         </div>
       </div>`;
 
-    const proc = processed();
+    const canvasContainer = overlay.querySelector('#wzPrevCanvas')!;
+    const slotsContainer = overlay.querySelector('#wzSlots')!;
 
-    const renderChipsAndPreview = () => {
-      const q = quantize({ data: new Uint8ClampedArray(proc.data), width: proc.width, height: proc.height }, colorCount);
-
-      if (wizardPaletteOverrides.length !== q.palette.length) {
-        wizardPaletteOverrides = q.palette.map(p => p.rgb);
-      }
-
-      const prevEl = overlay.querySelector('#wzMatchPrev')!;
-      prevEl.innerHTML = '';
-      const displayImg = getQuantizedImage(proc, q, wizardPaletteOverrides);
+    function drawCanvas() {
+      canvasContainer.innerHTML = '';
+      const highlightIdx = hoveredColorIdx !== null ? hoveredColorIdx : activeColorIdx;
+      const displayImg = getQuantizedImage(proc, q, wizardPaletteOverrides, highlightIdx);
       const canvas = imageToCanvas(displayImg);
-      prevEl.appendChild(canvas);
+      canvasContainer.appendChild(canvas);
 
-      setupInteractivePreview(canvas, q, proc, renderChipsAndPreview);
+      canvas.style.cursor = 'pointer';
+      canvas.title = 'Click a region to customize its color';
 
-      const chips = overlay.querySelector<HTMLElement>('#wzChips')!;
-      chips.innerHTML = q.palette
-        .map((p, i) => {
-          const rgb = wizardPaletteOverrides[i] || p.rgb;
-          const hex = rgbHex(rgb);
-          return `<span class="wz-chip"><span class="dot" style="background:${hex}"></span>→<span class="slot">${i + 1}</span></span>`;
-        })
-        .join('');
-    };
+      canvas.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+        
+        const imgX = Math.floor((clickX / rect.width) * proc.width);
+        const imgY = Math.floor((clickY / rect.height) * proc.height);
+        
+        let newHoverIdx: number | null = null;
+        if (imgX >= 0 && imgX < proc.width && imgY >= 0 && imgY < proc.height) {
+          const pixelIdx = imgY * proc.width + imgX;
+          const colorIdx = q.indices[pixelIdx];
+          if (colorIdx !== -1) {
+            newHoverIdx = colorIdx;
+          }
+        }
+        
+        if (newHoverIdx !== hoveredColorIdx) {
+          hoveredColorIdx = newHoverIdx;
+          drawCanvas();
+          updateRowHighlights();
+        }
+      });
 
-    for (const b of overlay.querySelectorAll<HTMLElement>('#wzCount button')) {
-      b.classList.toggle('active', +b.dataset.n! === colorCount);
-      b.addEventListener('click', () => {
-        colorCount = +b.dataset.n!;
-        for (const x of overlay.querySelectorAll('#wzCount button')) x.classList.remove('active');
-        b.classList.add('active');
-        wizardPaletteOverrides = [];
-        renderChipsAndPreview();
+      canvas.addEventListener('mouseleave', () => {
+        if (hoveredColorIdx !== null) {
+          hoveredColorIdx = null;
+          drawCanvas();
+          updateRowHighlights();
+        }
+      });
+
+      canvas.addEventListener('click', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+        
+        const imgX = Math.floor((clickX / rect.width) * proc.width);
+        const imgY = Math.floor((clickY / rect.height) * proc.height);
+        
+        if (imgX >= 0 && imgX < proc.width && imgY >= 0 && imgY < proc.height) {
+          const pixelIdx = imgY * proc.width + imgX;
+          const colorIdx = q.indices[pixelIdx];
+          if (colorIdx !== -1) {
+            activeColorIdx = colorIdx;
+            drawCanvas();
+            renderSlots();
+            
+            const mockTrigger = document.createElement('div');
+            mockTrigger.style.position = 'fixed';
+            mockTrigger.style.left = `${e.clientX}px`;
+            mockTrigger.style.top = `${e.clientY}px`;
+            document.body.appendChild(mockTrigger);
+            
+            const currentHex = rgbHex(wizardPaletteOverrides[colorIdx] || q.palette[colorIdx].rgb);
+            showWizardColorPicker(mockTrigger, currentHex, (hex) => {
+              wizardPaletteOverrides[colorIdx] = hexRgb(hex);
+              drawCanvas();
+              renderSlots();
+              mockTrigger.remove();
+            });
+
+            const checkDismiss = () => {
+              if (!document.getElementById('wzColorPopover')) {
+                mockTrigger.remove();
+              } else {
+                setTimeout(checkDismiss, 100);
+              }
+            };
+            setTimeout(checkDismiss, 100);
+          }
+        }
       });
     }
-    renderChipsAndPreview();
 
-    overlay.querySelector('#wzCancel')!.addEventListener('click', cancel);
+    function renderSlots() {
+      slotsContainer.innerHTML = '';
+      q.palette.forEach((entry, i) => {
+        const row = document.createElement('div');
+        row.className = `wz-slot-row${i === activeColorIdx ? ' active' : ''}`;
+        row.dataset.idx = String(i);
+        
+        const currentMappedRgb = wizardPaletteOverrides[i] || entry.rgb;
+        const mappedHex = rgbHex(currentMappedRgb);
+        const sourceHex = rgbHex(entry.rgb);
+
+        row.innerHTML = `
+          <span class="dot-original" style="background: ${sourceHex}"></span>
+          <span class="slot-arrow">→</span>
+          <button type="button" class="dot-mapped" style="background: ${mappedHex}"></button>
+          <span class="slot-name">Slot ${i + 1}</span>
+          <span class="slot-pct">${Math.round(entry.coverage * 100)}%</span>
+        `;
+
+        row.addEventListener('mouseenter', () => {
+          hoveredColorIdx = i;
+          drawCanvas();
+          updateRowHighlights();
+        });
+
+        row.addEventListener('mouseleave', () => {
+          if (hoveredColorIdx === i) {
+            hoveredColorIdx = null;
+            drawCanvas();
+            updateRowHighlights();
+          }
+        });
+
+        row.addEventListener('click', (e) => {
+          if ((e.target as HTMLElement).closest('.dot-mapped')) {
+            e.stopPropagation();
+            activeColorIdx = i;
+            renderSlots();
+            drawCanvas();
+            
+            const dotBtn = row.querySelector('.dot-mapped')!;
+            showWizardColorPicker(dotBtn as HTMLElement, mappedHex, (hex) => {
+              wizardPaletteOverrides[i] = hexRgb(hex);
+              renderSlots();
+              drawCanvas();
+            });
+          } else {
+            activeColorIdx = i;
+            renderSlots();
+            drawCanvas();
+          }
+        });
+
+        slotsContainer.appendChild(row);
+      });
+    }
+
+    function updateRowHighlights() {
+      const rows = slotsContainer.querySelectorAll('.wz-slot-row');
+      rows.forEach((r, i) => {
+        const hoverHighlight = hoveredColorIdx === i;
+        const activeHighlight = activeColorIdx === i;
+        r.classList.toggle('active', activeHighlight);
+        const rEl = r as HTMLElement;
+        if (hoverHighlight) {
+          rEl.style.borderColor = 'var(--accent)';
+          rEl.style.background = 'rgba(255, 255, 255, 0.05)';
+        } else {
+          rEl.style.borderColor = activeHighlight ? 'var(--accent)' : 'var(--line)';
+          rEl.style.background = activeHighlight ? 'rgba(142, 68, 173, 0.1)' : 'var(--panel-2)';
+        }
+      });
+    }
+
+    if (colorMode === 'normal') {
+      for (const b of overlay.querySelectorAll<HTMLElement>('#wzCount button')) {
+        b.classList.toggle('active', +b.dataset.n! === colorCount);
+        b.addEventListener('click', () => {
+          colorCount = +b.dataset.n!;
+          for (const x of overlay.querySelectorAll('#wzCount button')) x.classList.remove('active');
+          b.classList.add('active');
+          
+          runQuantize();
+          activeColorIdx = 0;
+          hoveredColorIdx = null;
+          
+          renderSlots();
+          drawCanvas();
+        });
+      }
+    }
+
+    overlay.querySelector('#wzBack')!.addEventListener('click', () => {
+      stepPreprocess();
+    });
+
     overlay.querySelector('#wzDone')!.addEventListener('click', () => {
       close();
       opts.onComplete({
         adjusted: adjusted(),
         preprocess: { ...params },
-        colorCount,
-        colorMode: 'normal',
+        colorCount: colorMode === 'limited' ? limitedColors.length : colorCount,
+        colorMode,
+        limitedColors: colorMode === 'limited' ? limitedColors : undefined,
         paletteOverrides: wizardPaletteOverrides,
       });
     });
+
+    renderSlots();
+    drawCanvas();
   }
 
   stepChooseColorMode();

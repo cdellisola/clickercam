@@ -729,8 +729,6 @@ export function createUi(
     });
   }
 
-  let focusedColor = 0;
-
   function getFilamentNameAndHex(rgb: RGB): [string, string] {
     let bestHex = rgbHex(rgb);
     let bestName = 'Custom Color';
@@ -750,74 +748,55 @@ export function createUi(
     return [bestName, bestHex];
   }
 
+  function showSidebarColorPicker(
+    triggerEl: HTMLElement,
+    currentHex: string,
+    options: [string, string][],
+    onSelect: (hex: string) => void
+  ) {
+    const existing = document.getElementById('sbColorPopover');
+    if (existing) existing.remove();
+
+    const rect = triggerEl.getBoundingClientRect();
+
+    const popover = document.createElement('div');
+    popover.id = 'sbColorPopover';
+    popover.className = 'color-popover';
+    popover.style.left = `${Math.min(rect.left, window.innerWidth - 190)}px`;
+    popover.style.top = `${Math.min(rect.bottom + 6, window.innerHeight - 180)}px`;
+
+    options.forEach(([name, hex]) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.style.background = hex;
+      if (hex.toLowerCase() === currentHex.toLowerCase()) {
+        btn.classList.add('active');
+      }
+      btn.title = name;
+      btn.addEventListener('click', () => {
+        onSelect(hex);
+        popover.remove();
+      });
+      popover.appendChild(btn);
+    });
+
+    const dismiss = (e: MouseEvent) => {
+      if (!popover.contains(e.target as Node) && !triggerEl.contains(e.target as Node)) {
+        popover.remove();
+        document.removeEventListener('mousedown', dismiss);
+      }
+    };
+    setTimeout(() => {
+      document.addEventListener('mousedown', dismiss);
+    }, 50);
+
+    document.body.appendChild(popover);
+  }
+
   function renderPalette(palette: PaletteEntry[], bodyColorRgb: RGB, colorMode?: 'normal' | 'limited', limitedColors?: RGB[]) {
     const pal = $('palette');
     pal.innerHTML = '';
 
-    // ALWAYS render the Outline/Body row.
-    const bodyRow = document.createElement('div');
-    bodyRow.className = 'fil-row body-row';
-    bodyRow.innerHTML = `
-      <span class="slot-no">Outl</span>
-      <span class="swatch" style="background:#787c82; opacity: 0.5;" title="default outline color"></span>
-      <span class="arrow">→</span>
-      <span class="fil-chip" title="outline filament color" style="background:${rgbHex(bodyColorRgb)}"></span>
-      <span class="cov">Outline</span>
-      <span class="stepper" style="visibility: hidden;"></span>
-    `;
-    bodyRow.addEventListener('pointerdown', () => {
-      focusedColor = -1;
-      pal.querySelectorAll('.fil-row').forEach((x) => x.classList.remove('focused'));
-      bodyRow.classList.add('focused');
-    });
-    pal.appendChild(bodyRow);
-
-    if (palette.length === 0) {
-      const hint = document.createElement('div');
-      hint.className = 'hint';
-      hint.textContent = 'Load an image/vector to pick colors.';
-      pal.appendChild(hint);
-    } else {
-      if (focusedColor !== -1 && focusedColor >= palette.length) focusedColor = 0;
-      palette.forEach((entry, i) => {
-        const row = document.createElement('div');
-        row.className = 'fil-row';
-        row.innerHTML = `
-          <span class="slot-no">${i + 1}</span>
-          <span class="swatch" style="background:${rgbHex(entry.quantRgb)}" title="detected color"></span>
-          <span class="arrow">→</span>
-          <span class="fil-chip" title="filament" style="background:${rgbHex(entry.filamentRgb)}"></span>
-          <span class="cov">${Math.round(entry.coverage * 100)}%</span>
-          <span class="stepper" title="3D height (raises this color)">
-            <button class="dn">−</button>
-            <span class="lvl">${entry.heightLevel}</span>
-            <button class="up">+</button>
-          </span>`;
-        row.addEventListener('pointerdown', (e) => {
-          if ((e.target as HTMLElement).closest('.stepper')) return;
-          focusedColor = i;
-          pal.querySelectorAll('.fil-row').forEach((x) => x.classList.remove('focused'));
-          row.classList.add('focused');
-        });
-        row.querySelector<HTMLButtonElement>('.up')!.addEventListener('click', () =>
-          cb.onHeight(i, entry.heightLevel + 1)
-        );
-        row.querySelector<HTMLButtonElement>('.dn')!.addEventListener('click', () =>
-          cb.onHeight(i, entry.heightLevel - 1)
-        );
-        pal.appendChild(row);
-      });
-    }
-
-    // Filament palette: pick a roll for the selected slot.
-    const lib = document.createElement('div');
-    lib.className = 'lib';
-    lib.innerHTML = `
-      <div class="lib-label">Filament — pick a color for the selected slot</div>
-      <div class="lib-row"></div>
-    `;
-    const libRow = lib.querySelector('.lib-row')!;
-    
     const chipsToRender: [string, string][] = [];
     if (colorMode === 'limited' && limitedColors && limitedColors.length > 0) {
       limitedColors.forEach((rgb) => {
@@ -829,28 +808,65 @@ export function createUi(
       });
     }
 
-    chipsToRender.forEach(([name, hex]) => {
-      const chip = document.createElement('button');
-      chip.className = 'lib-chip';
-      chip.style.background = hex;
-      chip.title = name;
-      chip.addEventListener('click', () => {
-        if (focusedColor === -1) {
-          cb.onBodyColor(hex);
-        } else if (focusedColor >= 0 && focusedColor < palette.length) {
-          cb.onFilament(focusedColor, hex);
-        }
-      });
-      libRow.appendChild(chip);
-    });
-    pal.appendChild(lib);
+    // ALWAYS render the Clicker Body row.
+    const bodyRow = document.createElement('div');
+    bodyRow.className = 'fil-row body-row';
+    bodyRow.innerHTML = `
+      <span class="slot-no">Body</span>
+      <span class="swatch" style="background:#787c82; opacity: 0.5;" title="default body color"></span>
+      <span class="arrow">→</span>
+      <button type="button" class="fil-chip" title="clicker body color" style="background:${rgbHex(bodyColorRgb)}"></button>
+      <span class="cov">Clicker Body</span>
+      <span class="stepper" style="visibility: hidden;"></span>
+    `;
 
-    const rows = pal.querySelectorAll<HTMLElement>('.fil-row');
-    if (focusedColor === -1) {
-      bodyRow.classList.add('focused');
-    } else if (focusedColor >= 0 && focusedColor < palette.length) {
-      const targetRow = Array.from(rows).find(r => !r.classList.contains('body-row') && r.querySelector('.slot-no')?.textContent === String(focusedColor + 1));
-      if (targetRow) targetRow.classList.add('focused');
+    const bodyChip = bodyRow.querySelector('.fil-chip')!;
+    bodyChip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showSidebarColorPicker(bodyChip as HTMLElement, rgbHex(bodyColorRgb), chipsToRender, (hex) => {
+        cb.onBodyColor(hex);
+      });
+    });
+
+    pal.appendChild(bodyRow);
+
+    if (palette.length === 0) {
+      const hint = document.createElement('div');
+      hint.className = 'hint';
+      hint.textContent = 'Load an image/vector to pick colors.';
+      pal.appendChild(hint);
+    } else {
+      palette.forEach((entry, i) => {
+        const row = document.createElement('div');
+        row.className = 'fil-row';
+        row.innerHTML = `
+          <span class="slot-no">${i + 1}</span>
+          <span class="swatch" style="background:${rgbHex(entry.quantRgb)}" title="detected color"></span>
+          <span class="arrow">→</span>
+          <button type="button" class="fil-chip" title="filament" style="background:${rgbHex(entry.filamentRgb)}"></button>
+          <span class="cov">${Math.round(entry.coverage * 100)}%</span>
+          <span class="stepper" title="3D height (raises this color)">
+            <button class="dn">−</button>
+            <span class="lvl">${entry.heightLevel}</span>
+            <button class="up">+</button>
+          </span>`;
+
+        const chip = row.querySelector('.fil-chip')!;
+        chip.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showSidebarColorPicker(chip as HTMLElement, rgbHex(entry.filamentRgb), chipsToRender, (hex) => {
+            cb.onFilament(i, hex);
+          });
+        });
+
+        row.querySelector<HTMLButtonElement>('.up')!.addEventListener('click', () =>
+          cb.onHeight(i, entry.heightLevel + 1)
+        );
+        row.querySelector<HTMLButtonElement>('.dn')!.addEventListener('click', () =>
+          cb.onHeight(i, entry.heightLevel - 1)
+        );
+        pal.appendChild(row);
+      });
     }
   }
 

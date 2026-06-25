@@ -702,6 +702,168 @@ button.secondary:disabled { opacity: .5; cursor: default; }
 @keyframes pulse {
   0%, 100% { opacity: 0.85; }
   50% { opacity: 1; }
+}/* Make the mapped filament chip clickable and interactive */
+button.fil-chip {
+  padding: 0;
+  cursor: pointer;
+  transition: transform 0.1s ease, border-color 0.1s ease;
+  outline: none;
+}
+button.fil-chip:hover {
+  transform: scale(1.08);
+  border-color: var(--accent);
+}
+button.fil-chip:active {
+  transform: scale(0.95);
 }
 
+/* Two-column recolor layout for wizard */
+.wz-modal.recolor {
+  width: min(1000px, 95vw);
+}
+.wz-modal.recolor .wz-body {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 24px;
+  padding: 20px 25px;
+  height: 60vh;
+  min-height: 480px;
+  overflow: hidden;
+}
+.wz-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+  overflow-y: auto;
+  padding-right: 8px;
+  text-align: left;
+}
+.wz-sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+.wz-sidebar::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 3px;
+}
+.wz-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wz-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wz-slot-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.wz-slot-row:hover {
+  border-color: var(--accent);
+  background: rgba(255, 255, 255, 0.02);
+}
+:root[data-theme="light"] .wz-slot-row:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+.wz-slot-row.active {
+  border-color: var(--accent);
+  background: rgba(142, 68, 173, 0.1);
+  box-shadow: 0 0 8px rgba(142, 68, 173, 0.15);
+}
+.wz-slot-row .dot-original {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  flex-shrink: 0;
+}
+.wz-slot-row .slot-arrow {
+  color: var(--muted);
+  font-size: 14px;
+}
+.wz-slot-row .dot-mapped {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: transform 0.1s ease;
+}
+.wz-slot-row .dot-mapped:hover {
+  transform: scale(1.1);
+}
+.wz-slot-row .slot-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  flex-grow: 1;
+}
+.wz-slot-row .slot-pct {
+  font-size: 13px;
+  color: var(--muted);
+}
+.wz-preview-area {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+}
+.wz-preview-area .wz-canvas {
+  flex-grow: 1;
+  height: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.wz-preview-area .wz-canvas canvas {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
 
+/* Floating color selector popover styles */
+.color-popover {
+  position: fixed;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  padding: 10px;
+  z-index: 1000;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  width: 170px;
+}
+.color-popover button {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.15);
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+  outline: none;
+}
+.color-popover button:hover {
+  transform: scale(1.15);
+  box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+}
+.color-popover button.active {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
