@@ -51,8 +51,38 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .sidebar.left { border-right: 1px solid var(--line); }
 .sidebar.right { border-left: 1px solid var(--line); }
 
+/* App header: title + theme toggle on one row */
+.app-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+}
 h1 { font-size: 19px; margin: 0; letter-spacing: 0.2px; font-weight: 600; }
 h1 .sub { color: var(--muted); font-size: 15px; display: block; margin-top: 2px; font-weight: 400; }
+
+/* Theme toggle icon button */
+.theme-btn {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+.theme-btn:hover { border-color: var(--accent); color: var(--accent); }
+.theme-btn svg { display: none; }
+:root[data-theme="dark"] .theme-btn svg.icon-sun,
+:root:not([data-theme="light"]) .theme-btn svg.icon-sun { display: block; }
+:root[data-theme="light"] .theme-btn svg.icon-moon { display: block; }
 
 .section { border-top: 1px solid var(--line); padding: 18px 0; }
 .section:first-of-type { border-top: none; padding-top: 0; }
@@ -307,3 +337,264 @@ button.secondary:disabled { opacity: .5; cursor: default; }
   color: var(--muted);
   text-align: center;
 }
+
+/* ---- Welcome / onboarding modal ---- */
+.welcome-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.25s ease;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.welcome-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  width: min(540px, 94vw);
+  padding: 36px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.welcome-card h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+.welcome-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.55;
+}
+.welcome-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.welcome-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+.welcome-step-num {
+  flex: 0 0 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 15px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.welcome-step-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.welcome-step-text strong {
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.welcome-step-text span {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.welcome-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* Four-tabs for right sidebar legend sources */
+.tabs.four-tabs {
+  grid-template-columns: repeat(4, 1fr);
+  margin-bottom: 15px;
+}
+
+.mode-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.mode-panel[hidden] {
+  display: none;
+}
+
+.hint-text {
+  font-size: 13.5px;
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 0 0 5px;
+}
+.hint-link {
+  color: var(--accent);
+  text-decoration: none;
+}
+.hint-link:hover {
+  text-decoration: underline;
+}
+
+/* Galleries and scrollables */
+#uploadGallery, #gallery {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+  align-content: start;
+}
+#uploadGallery::-webkit-scrollbar, #gallery::-webkit-scrollbar {
+  width: 6px;
+}
+#uploadGallery::-webkit-scrollbar-thumb, #gallery::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 3px;
+}
+
+#uploadGalleryEmpty, #galleryEmpty {
+  grid-column: 1 / -1;
+  padding: 18px 12px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+  background: var(--panel-2);
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+}
+
+/* Icon style in galleries */
+.icon {
+  aspect-ratio: 1;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: border-color 0.12s, transform 0.12s;
+}
+.icon:hover {
+  border-color: var(--accent);
+}
+.icon.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+.icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: invert(1);
+  opacity: 0.85;
+}
+
+/* Lucide Search Wrap */
+#iconSearchWrap {
+  position: relative;
+  width: 100%;
+}
+#iconSearch {
+  width: 100%;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 9px 32px 9px 10px;
+  font: inherit;
+  font-size: 15px;
+}
+#iconSearchClear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  display: none;
+}
+#iconSearchClear:hover {
+  color: var(--text);
+  background: var(--panel);
+}
+
+#iconCount {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+#galleryMore {
+  grid-column: 1 / -1;
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font: inherit;
+  font-size: 14px;
+  text-align: center;
+}
+#galleryMore:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+/* Custom upload wrappers */
+.upload {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 14px;
+  color: var(--accent);
+  cursor: pointer;
+  margin-top: 5px;
+}
+.upload input {
+  display: none;
+}
+.field .upload {
+  margin-top: 0;
+}
+.upload-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  background: var(--accent);
+  color: #08122a;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  font-size: 15px;
+  transition: filter 0.12s;
+}
+.upload-cta:hover {
+  filter: brightness(1.07);
+}
+.upload-cta input {
+  display: none;
+}
+

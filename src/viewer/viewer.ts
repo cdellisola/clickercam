@@ -13,6 +13,7 @@ export interface Viewer {
   setSwitch(mesh: MeshData | null): void;
   showSwitch(on: boolean): void;
   renderToPng(): Promise<Blob | null>;
+  setTheme(theme: string): void;
   dispose(): void;
 }
 
@@ -139,28 +140,28 @@ export function createViewer(container: HTMLElement): Viewer {
       (p.kind === 'body' ? bodyGroup : capGroup).add(mesh);
     }
 
-    // Recenter the whole assembly at origin for viewing. Frame on the cap+body only
-    // (exclude the switch) so toggling the switch never shifts the view.
+    // Center X/Y, but place the bottom of the assembly at z = 0 so it sits on the grid.
     root.position.set(0, 0, 0);
     capGroup.position.set(0, 0, 0);
     const box = new THREE.Box3().expandByObject(capGroup).expandByObject(bodyGroup);
     const center = box.getCenter(new THREE.Vector3());
-    root.position.set(-center.x, -center.y, -center.z);
+    // Shift X and Y to center, but shift Z so the bottom of the model lands at 0.
+    root.position.set(-center.x, -center.y, -box.min.z);
 
     const size = box.getSize(new THREE.Vector3());
     bounds.copy(size);
     explodeOffset = size.z * 0.8 + 10;
     applyView();
 
-    // Position grid well below the bottom of the clicker
-    const bottomZ = box.min.z - center.z;
+    // Grid sits at z = 0 — the bottom face of the clicker lands exactly here.
     const activeTheme = document.documentElement.getAttribute('data-theme') || 'dark';
-    rebuildGrid(activeTheme, bottomZ - 12);
+    rebuildGrid(activeTheme, 0);
 
     const radius = Math.max(size.x, size.y, size.z) * 1.4 + 10;
     camera.position.set(radius, -radius, radius * 0.75);
-    controls.target.set(0, 0, 0);
+    controls.target.set(0, 0, size.z / 2);
     controls.update();
+
   }
 
   function updateClipPlane() {
@@ -260,6 +261,11 @@ export function createViewer(container: HTMLElement): Viewer {
     renderer.dispose();
     renderer.domElement.remove();
   }
+  function setTheme(theme: string) {
+    const bgColor = theme === 'dark' ? 0x15171c : 0xf3f4f6;
+    scene.background = new THREE.Color(bgColor);
+    rebuildGrid(theme, gridZ);
+  }
 
-  return { setParts, setView, setSection, setSwitch, showSwitch, renderToPng, dispose };
+  return { setParts, setView, setSection, setSwitch, showSwitch, renderToPng, setTheme, dispose };
 }

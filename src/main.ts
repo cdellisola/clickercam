@@ -6,6 +6,9 @@ import { loadFileToImage, type RgbaImage } from './image/decode';
 import { processImage } from './image/pipeline';
 import { runWizard } from './ui/wizard';
 import { downloadThreeMF } from './export/threemfExport';
+import { parseSvg } from './image/logo';
+import { parseLetter, importFontFile } from './image/letter';
+import { LUCIDE_ICONS, buildSvg } from './image/lucideIcons';
 import type {
   BuildParams,
   BuildRegion,
@@ -33,6 +36,7 @@ const store = createStore<UiState>({
   removeBg: true,
   view: 'assembled',
   showSwitch: false,
+  importMode: 'icon', // Default to 'icon' to show a live clicker immediately
 });
 
 // ---- Heavy data kept out of the reactive store ----
@@ -40,6 +44,14 @@ let originalImage: RgbaImage | null = null; // pristine decode (never mutated)
 let regionSet: RegionSet | null = null;
 let latestParts: ClickerPart[] = [];
 let assetsReady = false;
+
+// Vector states
+let currentSvgText = '';
+let currentSvgName = '';
+let currentIconText = '';
+let currentIconName = '';
+let currentText = 'A';
+let currentFontId = 'helvetiker-regular';
 
 const hasImage = () => originalImage !== null;
 function cloneImage(img: RgbaImage): RgbaImage {
@@ -51,6 +63,15 @@ const sidebarLeft = document.getElementById('sidebar-left')!;
 const sidebarRight = document.getElementById('sidebar-right')!;
 const statusEl = document.getElementById('status')!;
 const viewer = createViewer(document.getElementById('app')!);
+
+// ---- Apply initial theme (system pref or saved preference) ----
+(function applyInitialTheme() {
+  const saved = localStorage.getItem('clicker-theme');
+  const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const theme = saved ?? (systemDark ? 'dark' : 'light');
+  document.documentElement.setAttribute('data-theme', theme);
+  viewer.setTheme(theme);
+})();
 
 const ui = createUi(sidebarLeft, sidebarRight, statusEl, {
   onUpload: (file) => openWizard(() => loadFileToImage(file)),
@@ -101,11 +122,11 @@ const ui = createUi(sidebarLeft, sidebarRight, statusEl, {
   },
   onSmoothing: (v) => {
     store.set({ smoothing: v });
-    if (hasImage()) debouncedReprocess();
+    if (store.get().importMode === 'image' && hasImage()) debouncedReprocess();
   },
   onRemoveBg: (on) => {
     store.set({ removeBg: on });
-    if (hasImage()) reprocess();
+    if (store.get().importMode === 'image' && hasImage()) reprocess();
   },
   onView: (mode) => {
     store.set({ view: mode });
@@ -134,6 +155,58 @@ const ui = createUi(sidebarLeft, sidebarRight, statusEl, {
   },
   onSaveProject: () => saveProject(),
   onLoadProject: (file) => loadProject(file),
+
+  // Vector mode callbacks
+  onImportMode: (mode) => {
+    store.set({ importMode: mode });
+    reprocess();
+  },
+  onSvgUpload: async (file) => {
+    try {
+      store.set({ building: true, status: 'Reading SVG…' });
+      const svgText = await file.text();
+      ui.addUploadedSvg(svgText, file.name.replace(/\.svg$/i, ''));
+    } catch (err) {
+      store.set({ building: false, status: 'Error reading SVG: ' + String(err) });
+    }
+  },
+  onSelectSvg: (svgText, name) => {
+    currentSvgText = svgText;
+    currentSvgName = name;
+    reprocess();
+  },
+  onSelectIcon: (svgText, name) => {
+    currentIconText = svgText;
+    currentIconName = name;
+    reprocess();
+  },
+  onTextChange: (text) => {
+    currentText = text;
+    reprocess();
+  },
+  onFontSelect: (fontId) => {
+    currentFontId = fontId;
+    reprocess();
+  },
+  onImportFont: async (file) => {
+    try {
+      store.set({ building: true, status: 'Importing font…' });
+      const font = await importFontFile(file);
+      ui.addFontOption(font);
+      currentFontId = font.id;
+      reprocess();
+    } catch (err) {
+      store.set({ building: false, status: 'Could not import font: ' + String(err) });
+    }
+  },
+  onThemeChange: (theme) => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('clicker-theme', theme);
+    viewer.setTheme(theme);
+  },
+  onGenerate: () => {
+    reprocess();
+  },
 });
 
 store.subscribe((s) => ui.update(s));
@@ -156,9 +229,17 @@ worker.onmessage = (e: MessageEvent<GeometryResponse>) => {
       viewer.setSwitch(msg.switchMesh);
       viewer.showSwitch(store.get().showSwitch);
       store.set({
-        status: regionSet ? 'Building clicker…' : 'Ready — drop an image or try the sample.',
+        status: 'Ready — import an image, SVG, icon, or text.',
       });
-      if (regionSet) rebuild();
+      // Pick a default popular icon on startup so it builds immediately
+      if (store.get().importMode === 'icon' && !currentIconText) {
+        const first = LUCIDE_ICONS.find((ic) => ic.name === 'heart') || LUCIDE_ICONS[0];
+        if (first) {
+          currentIconText = buildSvg(first.node);
+          currentIconName = first.name;
+        }
+      }
+      reprocess();
       break;
     case 'parts':
       latestParts = msg.parts;
@@ -196,8 +277,6 @@ async function initAssets() {
 }
 
 // ---- Pipeline ----
-// Decode, then open the Bambu-style preprocessing wizard. The wizard hands back
-// the cropped+adjusted image (background intact); we commit it and run the build.
 async function openWizard(getter: () => Promise<RgbaImage>) {
   try {
     store.set({ building: true, status: 'Reading image…' });
@@ -224,14 +303,57 @@ async function openWizard(getter: () => Promise<RgbaImage>) {
 }
 
 function reprocess() {
-  if (!originalImage) return;
   const s = store.get();
-  store.set({ building: true, status: 'Removing background & tracing…' });
-  // Work on a fresh copy so the background toggle is reversible.
-  regionSet = processImage(cloneImage(originalImage), s.colorCount, {
-    removeBg: s.removeBg,
-    smoothing: s.smoothing,
-  });
+
+  if (s.importMode === 'image') {
+    if (!originalImage) return;
+    store.set({ building: true, status: 'Removing background & tracing…' });
+    regionSet = processImage(cloneImage(originalImage), s.colorCount, {
+      removeBg: s.removeBg,
+      smoothing: s.smoothing,
+    });
+  } else if (s.importMode === 'svg') {
+    if (!currentSvgText) {
+      store.set({ status: 'Upload an SVG file first.' });
+      return;
+    }
+    try {
+      store.set({ building: true, status: 'Parsing SVG…' });
+      regionSet = parseSvg(currentSvgText);
+    } catch (e: any) {
+      store.set({ building: false, status: 'Error: ' + e.message });
+      return;
+    }
+  } else if (s.importMode === 'icon') {
+    if (!currentIconText) {
+      const first = LUCIDE_ICONS.find((ic) => ic.name === 'heart') || LUCIDE_ICONS[0];
+      if (first) {
+        currentIconText = buildSvg(first.node);
+        currentIconName = first.name;
+      }
+    }
+    if (!currentIconText) {
+      store.set({ status: 'Select an icon first.' });
+      return;
+    }
+    try {
+      store.set({ building: true, status: 'Parsing Icon…' });
+      regionSet = parseSvg(currentIconText);
+    } catch (e: any) {
+      store.set({ building: false, status: 'Error: ' + e.message });
+      return;
+    }
+  } else if (s.importMode === 'text') {
+    try {
+      store.set({ building: true, status: 'Generating Text…' });
+      regionSet = parseLetter(currentText, currentFontId, 8);
+    } catch (e: any) {
+      store.set({ building: false, status: 'Error: ' + e.message });
+      return;
+    }
+  }
+
+  if (!regionSet) return;
 
   const palette: PaletteEntry[] = regionSet.regions.map((r) => ({
     quantRgb: r.quantRgb,
@@ -242,7 +364,7 @@ function reprocess() {
   store.set({ palette });
 
   if (palette.length === 0) {
-    store.set({ building: false, status: 'No subject found — try a PNG with transparency or toggle background removal.' });
+    store.set({ building: false, status: 'No outline found.' });
     return;
   }
   rebuild();
@@ -272,15 +394,15 @@ function rebuild() {
   const params: BuildParams = {
     baseShape: s.baseShape,
     capWidthMm: s.capWidthMm,
-    topThickness: Math.max(1, s.topThickness), // solid backing behind the image (≥1 mm)
-    imageDepth: s.imageDepth, // how deep colors cut from the top
-    imageMargin: 1.2, // flat base-color frame between image and cap edge
-    borderWidth: 2.6, // raised body border (bezel) around the cap
-    capProud: 4.0, // cap sticks up above the border by ≈ travel → flush when fully pressed
-    tolerance: s.tolerance, // slip-fit between cap outer wall and body well wall
-    colorBleed: 0.12, // tiny overlap so neighboring colors never leave a gap
+    topThickness: Math.max(1, s.topThickness),
+    imageDepth: s.imageDepth,
+    imageMargin: 1.2,
+    borderWidth: 2.6,
+    capProud: 4.0,
+    tolerance: s.tolerance,
+    colorBleed: 0.12,
     stepHeight: 0.6,
-    travel: 4.0, // MX switch press travel
+    travel: 4.0,
     floorThickness: 1.6,
     keychainHole: s.keychain,
     baseFilamentRgb: s.palette[domIdx]?.filamentRgb ?? ([180, 180, 185] as RGB),
@@ -353,7 +475,7 @@ function dataUrlToImage(url: string): Promise<RgbaImage> {
 function saveProject() {
   const s = store.get();
   const proj = {
-    version: 1,
+    version: 2,
     settings: {
       colorCount: s.colorCount,
       baseShape: s.baseShape,
@@ -363,6 +485,13 @@ function saveProject() {
       tolerance: s.tolerance,
       smoothing: s.smoothing,
       removeBg: s.removeBg,
+      importMode: s.importMode,
+      currentText,
+      currentFontId,
+      currentSvgText,
+      currentSvgName,
+      currentIconText,
+      currentIconName,
     },
     palette: s.palette, // filament mappings + height levels
     image: originalImage ? imageToDataUrl(originalImage) : null,
@@ -376,7 +505,20 @@ async function loadProject(file: File) {
     store.set({ building: true, status: 'Loading project…' });
     const proj = JSON.parse(await file.text());
     const set = proj.settings ?? {};
+
+    currentText = set.currentText ?? 'A';
+    currentFontId = set.currentFontId ?? 'helvetiker-regular';
+    currentSvgText = set.currentSvgText ?? '';
+    currentSvgName = set.currentSvgName ?? '';
+    currentIconText = set.currentIconText ?? '';
+    currentIconName = set.currentIconName ?? '';
+
+    if (currentSvgText && currentSvgName) {
+      ui.addUploadedSvg(currentSvgText, currentSvgName);
+    }
+
     store.set({
+      importMode: set.importMode ?? 'image',
       colorCount: set.colorCount ?? store.get().colorCount,
       baseShape: set.baseShape ?? store.get().baseShape,
       capWidthMm: set.capWidthMm ?? store.get().capWidthMm,
@@ -386,21 +528,21 @@ async function loadProject(file: File) {
       smoothing: set.smoothing ?? store.get().smoothing,
       removeBg: set.removeBg ?? store.get().removeBg,
     });
-    if (proj.image) {
+
+    if (set.importMode === 'image' && proj.image) {
       originalImage = await dataUrlToImage(proj.image);
-      reprocess();
-      // Re-apply saved filament/height mappings over the regenerated palette.
-      if (Array.isArray(proj.palette)) {
-        const pal = store.get().palette.map((p, i) => ({
-          ...p,
-          filamentRgb: proj.palette[i]?.filamentRgb ?? p.filamentRgb,
-          heightLevel: proj.palette[i]?.heightLevel ?? p.heightLevel,
-        }));
-        store.set({ palette: pal });
-        rebuild();
-      }
-    } else {
-      store.set({ building: false, status: 'Project loaded (no image).' });
+    }
+
+    reprocess();
+
+    if (Array.isArray(proj.palette)) {
+      const pal = store.get().palette.map((p, i) => ({
+        ...p,
+        filamentRgb: proj.palette[i]?.filamentRgb ?? p.filamentRgb,
+        heightLevel: proj.palette[i]?.heightLevel ?? p.heightLevel,
+      }));
+      store.set({ palette: pal });
+      rebuild();
     }
   } catch (err) {
     store.set({ building: false, status: 'Could not load project: ' + String(err) });

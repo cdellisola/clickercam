@@ -93,13 +93,11 @@ export function buildClicker(
     rings.map((r) => r.map(([x, y]) => [x * sR, y * sR] as [number, number]));
 
   const filledOutline = (): Section => {
-    let acc: Section | null = null;
-    for (const ring of scaleRings(outline)) {
-      if (ring.length < 3) continue;
-      const piece = track(new CrossSection([ring], 'NonZero'));
-      acc = acc ? track(acc.add(piece)) : piece;
+    const validRings = scaleRings(outline).filter((r) => r.length >= 3);
+    if (validRings.length === 0) {
+      return track(CrossSection.square([sR, sR], true));
     }
-    return acc ?? track(CrossSection.square([sR, sR], true));
+    return track(new CrossSection(validRings, 'NonZero'));
   };
 
   const roundedRect = (w: number, h: number, r: number): Section => {

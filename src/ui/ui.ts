@@ -59,6 +59,8 @@ export interface UiCallbacks {
   onTextChange(text: string): void;
   onFontSelect(fontId: string): void;
   onImportFont(file: File): void;
+  onThemeChange(theme: string): void;
+  onGenerate(): void;
 }
 
 // Real filament rolls (Bambu Basic-ish). Color slots are assigned from THIS
@@ -124,7 +126,13 @@ export function createUi(
 ) {
   // Populate Left Sidebar (Settings + Preview)
   sidebarLeft.innerHTML = `
-    <h1>Clicker Generator <span class="sub">vector/image → clicker</span></h1>
+    <div class="app-header">
+      <h1>Clicker Generator <span class="sub">vector/image → clicker</span></h1>
+      <button id="themeToggle" class="theme-btn" type="button" title="Toggle light/dark mode" aria-label="Toggle theme">
+        <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>
+        <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+    </div>
 
     <div class="section">
       <span class="label">Preview &amp; View</span>
@@ -245,6 +253,7 @@ export function createUi(
           Upload SVG file(s)
           <input id="svgUpload" type="file" accept=".svg,image/svg+xml" multiple />
         </label>
+        <button class="primary" id="generateSvg" style="margin-top: 10px; width: 100%;">Generate</button>
       </div>
 
       <!-- Icon Panel -->
@@ -255,6 +264,7 @@ export function createUi(
         </div>
         <div id="iconCount"></div>
         <div id="gallery"></div>
+        <button class="primary" id="generateIcon" style="margin-top: 10px; width: 100%;">Generate</button>
       </div>
 
       <!-- Text Panel -->
@@ -271,6 +281,7 @@ export function createUi(
             <input id="fontUpload" type="file" accept=".ttf,.otf,.json,font/ttf,font/otf,application/json" />
           </label>
         </div>
+        <button class="primary" id="generateText" style="margin-top: 10px; width: 100%;">Generate</button>
       </div>
     </div>
 
@@ -550,6 +561,28 @@ export function createUi(
   FONT_OPTIONS.forEach(addFontOption);
   loadBundledFonts(addFontOption);
 
+  // --- Generate buttons ---
+  $('generateSvg').addEventListener('click', () => cb.onGenerate());
+  $('generateIcon').addEventListener('click', () => cb.onGenerate());
+  $('generateText').addEventListener('click', () => cb.onGenerate());
+
+  // --- Add loading overlay to viewport dynamically ---
+  const viewport = $('viewport');
+  if (viewport) {
+    let overlay = $('loadingOverlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'loadingOverlay';
+      overlay.className = 'loading-overlay';
+      overlay.setAttribute('hidden', '');
+      overlay.innerHTML = `
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Generating 3D model…</div>
+      `;
+      viewport.appendChild(overlay);
+    }
+  }
+
   // --- Import mode tabs ---
   const importTabs = $('importTabs');
   importTabs.addEventListener('click', (e) => {
@@ -616,6 +649,63 @@ export function createUi(
     if (projFile.files?.[0]) cb.onLoadProject(projFile.files[0]);
     projFile.value = '';
   });
+
+  // --- Theme toggle ---
+  $('themeToggle').addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme');
+    const next = current === 'light' ? 'dark' : 'light';
+    cb.onThemeChange(next);
+  });
+
+  // --- Welcome modal (first launch) ---
+  if (!localStorage.getItem('clicker-welcomed')) {
+    const wm = document.createElement('div');
+    wm.className = 'welcome-overlay';
+    wm.innerHTML = `
+      <div class="welcome-card">
+        <h2>Welcome to Clicker Generator 👋</h2>
+        <p>Turn any image, SVG, icon, or text into a multi-color 3D printable clicker — ready for Bambu Studio or PrusaSlicer.</p>
+        <div class="welcome-steps">
+          <div class="welcome-step">
+            <div class="welcome-step-num">1</div>
+            <div class="welcome-step-text">
+              <strong>Import your design</strong>
+              <span>Drop an image or choose a sample, upload an SVG, pick a Lucide icon, or type custom text.</span>
+            </div>
+          </div>
+          <div class="welcome-step">
+            <div class="welcome-step-num">2</div>
+            <div class="welcome-step-text">
+              <strong>Configure the clicker</strong>
+              <span>Pick colors &amp; filaments, choose a shape, adjust the size and depth.</span>
+            </div>
+          </div>
+          <div class="welcome-step">
+            <div class="welcome-step-num">3</div>
+            <div class="welcome-step-text">
+              <strong>Export &amp; print</strong>
+              <span>Download the 3MF file and load it directly into your slicer — each color is a separate part.</span>
+            </div>
+          </div>
+        </div>
+        <div class="welcome-foot">
+          <button class="primary" id="welcomeClose" style="min-width:150px">Get started →</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(wm);
+    wm.querySelector('#welcomeClose')!.addEventListener('click', () => {
+      localStorage.setItem('clicker-welcomed', '1');
+      wm.remove();
+    });
+    // Also dismiss on backdrop click
+    wm.addEventListener('click', (e) => {
+      if (e.target === wm) {
+        localStorage.setItem('clicker-welcomed', '1');
+        wm.remove();
+      }
+    });
+  }
 
   let focusedColor = 0;
 
@@ -734,8 +824,18 @@ export function createUi(
     const exportBtn = $<HTMLButtonElement>('export');
     exportBtn.disabled = !state.hasParts || state.building;
 
+    // Toggle loading overlay
+    const overlay = $('loadingOverlay');
+    if (overlay) {
+      if (state.building) {
+        overlay.removeAttribute('hidden');
+      } else {
+        overlay.setAttribute('hidden', '');
+      }
+    }
+
     renderPalette(state.palette);
   }
 
-  return { update, hexRgb, addUploadedSvg };
+  return { update, hexRgb, addUploadedSvg, addFontOption: (font: FontOption) => { addFontOption(font); fontSelect.value = font.id; } };
 }
