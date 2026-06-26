@@ -7,7 +7,7 @@ import type { ClickerPart, MeshData, RGB, ViewMode } from '../types';
 export type SectionAxis = 'x' | 'y' | 'z';
 
 export interface Viewer {
-  setParts(parts: ClickerPart[]): void;
+  setParts(parts: ClickerPart[], preserveCamera?: boolean): void;
   setView(mode: ViewMode): void;
   setSection(axis: SectionAxis, pos: number): void;
   setSwitch(mesh: MeshData | null): void;
@@ -186,7 +186,7 @@ export function createViewer(container: HTMLElement): Viewer {
     }
   }
 
-  function setParts(parts: ClickerPart[]) {
+  function setParts(parts: ClickerPart[], preserveCamera = false) {
     clearPlaceholder();
     clearGroup(capGroup);
     clearGroup(bodyGroup);
@@ -229,10 +229,12 @@ export function createViewer(container: HTMLElement): Viewer {
     const activeTheme = document.documentElement.getAttribute('data-theme') || 'dark';
     rebuildGrid(activeTheme, -GRID_GAP);
 
-    const radius = Math.max(size.x, size.y, size.z) * 2.2 + 15;
-    camera.position.set(radius, -radius, radius * 0.75);
-    controls.target.set(0, 0, size.z / 2);
-    controls.update();
+    if (!preserveCamera) {
+      const radius = Math.max(size.x, size.y, size.z) * 2.2 + 15;
+      camera.position.set(radius, -radius, radius * 0.75);
+      controls.target.set(0, 0, size.z / 2);
+      controls.update();
+    }
 
   }
 

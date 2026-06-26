@@ -46,6 +46,47 @@ function meshXml(p: ClickerPart, minZ: number): string {
   return `<mesh><vertices>${verts.join('')}</vertices><triangles>${tris.join('')}</triangles></mesh>`;
 }
 
+/** Axis-aligned bounding box for a set of parts (after the minZ shift). */
+function groupBBox(
+  parts: ClickerPart[],
+  groupId: PartGroup,
+  minZ: number,
+): { minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number } {
+  let bMinX = Infinity, bMaxX = -Infinity;
+  let bMinY = Infinity, bMaxY = -Infinity;
+  let bMinZ = Infinity, bMaxZ = -Infinity;
+  for (const p of parts) {
+    if (p.group !== groupId) continue;
+    const np = p.numProp;
+    const vp = p.vertProperties;
+    for (let i = 0; i < vp.length; i += np) {
+      const x = vp[i], y = vp[i + 1], z = vp[i + 2] - minZ;
+      if (x < bMinX) bMinX = x;
+      if (x > bMaxX) bMaxX = x;
+      if (y < bMinY) bMinY = y;
+      if (y > bMaxY) bMaxY = y;
+      if (z < bMinZ) bMinZ = z;
+      if (z > bMaxZ) bMaxZ = z;
+    }
+  }
+  return { minX: bMinX, maxX: bMaxX, minY: bMinY, maxY: bMaxY, minZ: bMinZ, maxZ: bMaxZ };
+}
+
+/**
+ * Build a 3×4 affine transform string for a 3MF `<item transform="...">`.
+ * Row-major: m00 m01 m02 m10 m11 m12 m20 m21 m22 m30 m31 m32
+ * (the 3MF spec stores it as 12 floats: columns of the 4×3 matrix, but the
+ *  attribute is written as "m00 m01 m02 m10 m11 m12 m20 m21 m22 m30 m31 m32".)
+ */
+function transformAttr(
+  m00: number, m01: number, m02: number,
+  m10: number, m11: number, m12: number,
+  m20: number, m21: number, m22: number,
+  tx: number, ty: number, tz: number,
+): string {
+  return ` transform="${[m00, m01, m02, m10, m11, m12, m20, m21, m22, tx, ty, tz].map(f).join(' ')}"`;
+}
+
 export function buildThreeMF(parts: ClickerPart[]): Uint8Array {
   // Drop the whole assembly onto the build plate (min Z -> 0), keeping relative
   // positions.
@@ -82,8 +123,42 @@ export function buildThreeMF(parts: ClickerPart[]): Uint8Array {
       return `<object id="${firstWrapperId + gi}" type="model"><components>${comps}</components></object>`;
     })
     .join('');
+
+  // --- Arrange parts for print: side by side, top part flipped face-down ---
+  const GAP_MM = 5; // spacing between base and top on the build plate
+
+  // Compute per-group bounding boxes (in the already-shifted coordinate space)
+  const baseBB = groupBBox(parts, 'base', minZ);
+  const topBB = groupBBox(parts, 'top', minZ);
+
   const buildItems = groups
-    .map((_, gi) => `<item objectid="${firstWrapperId + gi}"/>`)
+    .map((g, gi) => {
+      if (g.id === 'base') {
+        // Base stays at origin — identity transform (no attribute needed, but we
+        // keep it explicit for clarity)
+        return `<item objectid="${firstWrapperId + gi}"/>`;
+      }
+      // Top group: flip 180° around X so the image face is down on the build plate,
+      // then translate next to the base.
+      //
+      // 180° rotation around X:  [1, 0, 0 / 0, -1, 0 / 0, 0, -1]
+      // After flip, Z range inverts: old maxZ -> 0, old minZ -> (maxZ - minZ).
+      // We need to shift Z up by +maxZ so the flipped part sits on Z=0.
+      const tz = topBB.maxZ; // lifts flipped part back onto Z=0
+      // Shift in X so the top sits next to the base with a gap.
+      // Base occupies [baseBB.minX .. baseBB.maxX]. Place top to the right.
+      const baseWidth = isFinite(baseBB.maxX) ? baseBB.maxX - baseBB.minX : 0;
+      const topWidth = isFinite(topBB.maxX) ? topBB.maxX - topBB.minX : 0;
+      // Center both around X=0 area: base center, top center offset to the right
+      const baseCenterX = isFinite(baseBB.minX) ? (baseBB.minX + baseBB.maxX) / 2 : 0;
+      const topCenterX = isFinite(topBB.minX) ? (topBB.minX + topBB.maxX) / 2 : 0;
+      const tx = baseCenterX + baseWidth / 2 + GAP_MM + topWidth / 2 - topCenterX;
+      // Keep Y centered (flip inverts Y, so we compensate)
+      const topCenterY = isFinite(topBB.minY) ? (topBB.minY + topBB.maxY) / 2 : 0;
+      const ty = 2 * topCenterY; // compensate for Y inversion around origin
+      const xform = transformAttr(1, 0, 0, 0, -1, 0, 0, 0, -1, tx, ty, tz);
+      return `<item objectid="${firstWrapperId + gi}"${xform}/>`;
+    })
     .join('');
 
   const model =

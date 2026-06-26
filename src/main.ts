@@ -63,15 +63,16 @@ const store = createStore<UiState>({
   partOverrides: {},
   editMode: 'color',
   edgeSettings: [
-    { target: 'capTop', style: 'none', radius: 0 },
+    { target: 'capTop', style: 'chamfer', radius: 0.5 },
     // One control for the whole clicker base — bevels top + bottom body edges together.
-    { target: 'clickerBase', style: 'none', radius: 0 },
+    { target: 'clickerBase', style: 'chamfer', radius: 0.5 },
   ],
   extrudeHeight: null,
   componentHeights: {},
   selectedParts: [],
   canUndo: false,
   canRedo: false,
+  canRefresh: false,
 });
 
 // ---- Heavy data kept out of the reactive store ----
@@ -79,6 +80,7 @@ let originalImage: RgbaImage | null = null; // pristine decode (never mutated)
 let regionSet: RegionSet | null = null;
 let latestParts: ClickerPart[] = [];
 let assetsReady = false;
+let defaultClickerLoaded = false;
 
 // Vector states
 let currentSvgText = '';
@@ -282,7 +284,7 @@ const ui = createUi(sidebarLeft, sidebarRight, statusEl, {
     if (idx >= 0) {
       edgeSettings[idx] = { ...edgeSettings[idx], radius: next };
     } else {
-      edgeSettings.push({ target, style: 'fillet', radius: next });
+      edgeSettings.push({ target, style: 'chamfer', radius: next });
     }
     store.set({ edgeSettings });
     debouncedQuietRebuild(); // live preview of the bevel size
@@ -309,6 +311,7 @@ const ui = createUi(sidebarLeft, sidebarRight, statusEl, {
   },
   onUndo: () => undo(),
   onRedo: () => redo(),
+  onRefresh: () => refreshDesign(),
 });
 
 // ---- Undo / redo ----------------------------------------------------------
@@ -332,7 +335,7 @@ function snapshotHistory(): string {
   return JSON.stringify(picked);
 }
 function updateHistoryButtons() {
-  store.set({ canUndo: histIndex > 0, canRedo: histIndex < history.length - 1 });
+  store.set({ canUndo: histIndex > 0, canRedo: histIndex < history.length - 1, canRefresh: history.length > 1 });
 }
 function resetHistory() {
   history = [snapshotHistory()];
@@ -367,6 +370,15 @@ function redo() {
   histIndex++;
   applyHistorySnapshot(history[histIndex]);
 }
+function refreshDesign() {
+  if (history.length > 1) {
+    applyHistorySnapshot(history[0]);
+    // The state now matches the original snapshot, but we want this to be an undoable action
+    // so we call commitHistory right away to push the "refreshed" state as a new history step
+    // (commitHistory is debounced, but that's fine).
+    commitHistory();
+  }
+}
 
 // Ctrl/Cmd+Z = undo, Ctrl/Cmd+Shift+Z or Ctrl+Y = redo (ignored while typing).
 window.addEventListener('keydown', (e) => {
@@ -400,14 +412,14 @@ store.subscribe((s) => {
 });
 ui.update(store.get());
 
-// Load heart sample on startup
+// Load Vostok Labs logo sample on startup
 SAMPLES[0].load().then((img) => {
   originalImage = img;
-  if (assetsReady) {
+  if (assetsReady && !defaultClickerLoaded) {
     reprocess();
   }
 }).catch((err) => {
-  console.error('Failed to load default heart image', err);
+  console.error('Failed to load default image', err);
 });
 
 // ---- Click a colored region on the 3D model to recolor it (live, no rebuild) ----
@@ -588,11 +600,15 @@ worker.onmessage = (e: MessageEvent<GeometryResponse>) => {
           store.set({ currentIconName: first.name });
         }
       }
-      reprocess();
+      if (isInitialLoad) {
+        loadDefaultClicker();
+      } else {
+        reprocess();
+      }
       break;
     case 'parts': {
       latestParts = msg.parts;
-      viewer.setParts(msg.parts);
+      viewer.setParts(msg.parts, !pendingHistoryReset);
       viewer.setView(store.get().view);
 
       // Extrude heights are baked into the geometry now — do NOT translate the
@@ -632,6 +648,39 @@ async function initAssets() {
   } catch (err) {
     store.set({ status: 'Failed to load switch assets: ' + String(err) });
     isInitialLoad = false;
+  }
+}
+
+async function loadDefaultClicker() {
+  try {
+    store.set({ status: 'Loading default clicker…' });
+    const response = await fetch(base + 'assets/default-clicker.json');
+    if (!response.ok) throw new Error('Failed to fetch default clicker asset');
+    const serializedParts = await response.json();
+    const parts: ClickerPart[] = serializedParts.map((p: any) => ({
+      kind: p.kind,
+      group: p.group,
+      colorRgb: p.colorRgb,
+      name: p.name,
+      numProp: p.numProp,
+      vertProperties: new Float32Array(p.vertProperties),
+      triVerts: new Uint32Array(p.triVerts),
+    }));
+    latestParts = parts;
+    viewer.setParts(parts, false);
+    viewer.setView(store.get().view);
+    store.set({
+      building: false,
+      hasParts: parts.length > 0,
+      status: '', // Clear the banner when ready
+    });
+    defaultClickerLoaded = true;
+    isInitialLoad = false;
+  } catch (err) {
+    console.warn('Failed to load pre-built default clicker, falling back to dynamic build:', err);
+    if (originalImage) {
+      reprocess();
+    }
   }
 }
 
@@ -843,7 +892,7 @@ function firstLine(s: string): string {
 let downloadCount = 0;
 
 const COMMERCIAL_URL = 'https://makerworld.com/en/@Vostok_Labs#commercial-membership-open';
-const LICENSE_URL = 'https://github.com/vostoklabs/Clicker-Generator/blob/main/LICENSE.md';
+const LICENSE_URL = 'https://creativecommons.org/licenses/by-nc-nd/4.0/';
 
 function showLicenseModal() {
   if (document.querySelector('.license-overlay')) return;
@@ -855,7 +904,7 @@ function showLicenseModal() {
       <h2>Free for personal use 🎉</h2>
       <p>
         This generator and the designs it creates are released under a
-        <a href="${LICENSE_URL}" target="_blank" rel="noopener noreferrer">personal-use license</a>.
+        <a href="${LICENSE_URL}" target="_blank" rel="noopener noreferrer">CC BY-NC-ND 4.0 license</a>.
         Print as many as you like for yourself, completely free.
       </p>
       <div class="license-commercial">

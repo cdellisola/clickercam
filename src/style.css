@@ -455,10 +455,50 @@ button.secondary:disabled { opacity: .5; cursor: default; }
 .toggle input:checked + .slider::before { transform: translateX(21px); }
 .toggle input:focus-visible + .slider { box-shadow: 0 0 0 2px var(--accent); }
 
-.drop { border: 1.5px dashed var(--line); border-radius: 12px; padding: 25px 20px; text-align: center;
-  color: var(--muted); cursor: pointer; transition: border-color 0.15s, color 0.15s; background: var(--panel-2);
-  font-size: 15px; line-height: 1.4; }
-.drop:hover, .drop.over { border-color: var(--accent); color: var(--text); }
+.drop {
+  border: 2px dashed var(--accent);
+  outline: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  outline-offset: 3px;
+  border-radius: 12px;
+  padding: 30px 20px;
+  text-align: center;
+  color: var(--muted);
+  cursor: pointer;
+  background: color-mix(in srgb, var(--accent) 3%, var(--panel-2));
+  font-size: 15px;
+  line-height: 1.4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, outline-color 0.15s, background-color 0.15s, color 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+.drop-icon {
+  color: var(--accent);
+  margin-bottom: 10px;
+  transition: transform 0.18s ease, color 0.15s;
+}
+.drop-title {
+  font-size: 18.5px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.drop-text {
+  color: var(--text);
+  opacity: 0.85;
+}
+.drop:hover, .drop.over {
+  border-color: var(--accent);
+  outline-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel-2));
+  color: var(--text);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.12);
+}
+.drop:hover .drop-icon, .drop.over .drop-icon {
+  transform: translateY(-2px);
+}
 
 #status {
   position: absolute; left: 18px; bottom: 15px; z-index: 5; max-width: 70ch;
@@ -625,6 +665,193 @@ button.secondary:disabled { opacity: .5; cursor: default; }
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+
+/* ---- Onboarding Tutorial ---- */
+body.tutorial-active #layout > *,
+body.tutorial-active header {
+  filter: blur(5px) brightness(0.45);
+  pointer-events: none;
+  transition: filter 0.3s ease;
+}
+body.tutorial-active.focus-right #sidebar-right,
+body.tutorial-active.focus-left #sidebar-left,
+body.tutorial-active.focus-center #viewport {
+  filter: none;
+  pointer-events: auto;
+  position: relative;
+  z-index: 1000;
+}
+
+.tutorial-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 990;
+  pointer-events: none;
+  background: transparent;
+  animation: fadeIn 0.25s ease;
+}
+
+.tutorial-card-container {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.25s ease;
+}
+
+.tutorial-card {
+  pointer-events: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  width: 520px;
+  padding: 32px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  position: relative;
+}
+
+.tutorial-card h3 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.tutorial-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.tutorial-card-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.tutorial-card-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+.tutorial-card-close svg {
+  width: 14px;
+  height: 14px;
+}
+
+.tutorial-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.tutorial-nav {
+  display: flex;
+  gap: 8px;
+}
+
+.tutorial-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.tutorial-checkbox input {
+  margin: 0;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+@keyframes bounceRight {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(12px); }
+}
+@keyframes bounceLeft {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(-12px); }
+}
+@keyframes bounceDown {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(12px); }
+}
+@keyframes bounceUp {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+
+.tutorial-pointer {
+  position: fixed;
+  z-index: 2001;
+  pointer-events: none;
+  width: 56px;
+  height: 56px;
+  color: var(--accent);
+  transition: top 0.3s ease, left 0.3s ease;
+  filter: drop-shadow(0 4px 10px rgba(0,0,0,0.4));
+}
+
+.tutorial-pointer-inner {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tutorial-pointer svg {
+  width: 100%;
+  height: 100%;
+}
+
+.tutorial-pointer.point-right .tutorial-pointer-inner {
+  transform: rotate(0deg);
+}
+.tutorial-pointer.point-left .tutorial-pointer-inner {
+  transform: rotate(180deg);
+}
+.tutorial-pointer.point-down .tutorial-pointer-inner {
+  transform: rotate(90deg);
+}
+.tutorial-pointer.point-up .tutorial-pointer-inner {
+  transform: rotate(-90deg);
+}
+
+.tutorial-pointer.point-right { animation: bounceRight 1.2s infinite ease-in-out; }
+.tutorial-pointer.point-left { animation: bounceLeft 1.2s infinite ease-in-out; }
+.tutorial-pointer.point-down { animation: bounceDown 1.2s infinite ease-in-out; }
+.tutorial-pointer.point-up { animation: bounceUp 1.2s infinite ease-in-out; }
+
+/* Highlight the target element during onboarding */
+.tutorial-highlight {
+  outline: 3px solid var(--accent) !important;
+  outline-offset: 4px;
+  box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 40%, transparent) !important;
+  transition: outline 0.2s ease, box-shadow 0.2s ease;
+  z-index: 1002 !important;
 }
 
 /* ---- License reminder: full-screen modal (first download) ---- */
@@ -1276,13 +1503,16 @@ button.fil-chip:active {
   line-height: 1.2;
 }
 
-/* Sticky footer in right sidebar for export buttons */
+/* Sticky footer in sidebars for action buttons */
 .sidebar-sticky-footer {
   margin-top: auto;
   position: sticky;
-  bottom: 0;
+  bottom: -20px;
+  margin-left: -20px;
+  margin-right: -20px;
+  margin-bottom: -20px;
   background: var(--panel);
-  padding: 16px 0 0;
+  padding: 16px 20px 20px;
   border-top: 1px solid var(--line);
   z-index: 5;
 }

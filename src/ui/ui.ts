@@ -49,6 +49,7 @@ export interface UiState {
   /** Whether an undo / redo step is available (drives the toolbar buttons). */
   canUndo: boolean;
   canRedo: boolean;
+  canRefresh: boolean;
 }
 
 export interface UiCallbacks {
@@ -90,6 +91,7 @@ export interface UiCallbacks {
   onGenerate(): void;
   onUndo(): void;
   onRedo(): void;
+  onRefresh(): void;
 }
 
 const POPULAR_LUCIDE = [
@@ -165,7 +167,7 @@ export function createUi(
       </p>
     </div>
 
-    <div class="section">
+    <div class="section" id="previewViewSection">
       <span class="label">Preview &amp; View</span>
       <div class="tabs" id="viewTabs" role="tablist" style="margin-bottom: 12px;">
         <button class="tab active" data-view="assembled" type="button">Assembled</button>
@@ -177,7 +179,7 @@ export function createUi(
       </div>
     </div>
 
-    <div class="section">
+    <div class="section" id="baseStyleSection">
       <span class="label">Base style ${tip('Outline follows your image silhouette. Shape places the image on a preset base such as a circle or square.')}</span>
       <div class="field">
         <div class="tabs" id="shapeTypeTabs" role="tablist" style="margin-bottom: 12px;">
@@ -185,7 +187,7 @@ export function createUi(
           <button class="tab" data-style="shape" type="button">Shape</button>
         </div>
       </div>
-      <div class="field" id="shapeSelectField" style="margin-bottom: 0;">
+      <div class="field" id="shapeSelectField" style="margin-bottom: 12px;">
         <label for="shapeSelect">Shape geometry ${tip('The preset base shape used when the Shape base style is selected.')}</label>
         <select id="shapeSelect">
           <option value="circle">Circle</option>
@@ -196,43 +198,6 @@ export function createUi(
           <option value="egg">Egg</option>
         </select>
       </div>
-    </div>
-
-    <details class="section section-collapsible" id="sectionColors">
-      <summary class="label collapsible-head">1 · Colors &amp; Smoothing</summary>
-      <div class="collapsible-body">
-      <div class="field" id="colorCountField">
-        <label for="ccount">Colors ${tip('How many distinct filament colors the image is split into. Each color becomes a separate part in the export.')}</label>
-        <select id="ccount">
-          <option value="2">2 Colors</option>
-          <option value="3">3 Colors</option>
-          <option value="4">4 Colors</option>
-          <option value="5">5 Colors</option>
-          <option value="6">6 Colors</option>
-          <option value="7">7 Colors</option>
-          <option value="8">8 Colors</option>
-          <option value="9">9 Colors</option>
-          <option value="10">10 Colors</option>
-          <option value="11">11 Colors</option>
-          <option value="12">12 Colors</option>
-        </select>
-      </div>
-      <div class="prow-stacked" id="smoothingField">
-        <div class="prow-header">
-          <label for="smooth">Smoothing ${tip('Simplifies and smooths the traced outlines. Higher values give fewer, cleaner edges; lower keeps more fine detail.')}</label>
-          <input type="text" class="val" id="smoothVal" />
-        </div>
-        <input type="range" id="smooth" min="0" max="1" step="0.05" />
-      </div>
-      <div class="palette" id="palette">
-        <div class="hint">Load an image/vector to pick colors.</div>
-      </div>
-      </div>
-    </details>
-
-    <details class="section section-collapsible" id="sectionShape">
-      <summary class="label collapsible-head">2 · Shape &amp; Size</summary>
-      <div class="collapsible-body">
       <div class="prow-stacked">
         <div class="prow-header">
           <label for="width">Size ${tip('Overall size of the clicker (its longest side, in mm). This scales the whole model proportionally, not just the width.')}</label>
@@ -240,69 +205,117 @@ export function createUi(
         </div>
         <input type="range" id="width" min="20" max="70" step="1" />
       </div>
-      <div class="switch-row">
-        <span class="switch-label">Keychain loop ${tip('Adds a small loop to the body so you can attach the clicker to a keychain.')}</span>
-        <label class="toggle"><input id="keychain" type="checkbox" /><span class="slider"></span></label>
-      </div>
+    </div>
 
-      <div class="global-edges" id="globalEdges">
-        <span class="gedge-heading">Edges ${tip('Round (fillet) or bevel (chamfer) the outer edges. “Cap top” shapes the keycap’s top rim. “Clicker base” shapes the body’s top and bottom edges together.')}</span>
-        <div class="gedge-row">
-          <span class="gedge-name">Cap top</span>
-          <div class="edge-style-btns" data-edge="capTop">
-            <button class="edge-style-btn active" data-style="none" type="button">None</button>
-            <button class="edge-style-btn" data-style="fillet" type="button">Fillet</button>
-            <button class="edge-style-btn" data-style="chamfer" type="button">Chamfer</button>
-          </div>
-          <div class="edge-size-btns gedge-size" data-edge="capTop" style="display:none;">
-            <button class="btn edge-size-minus" type="button">−</button>
-            <span class="edge-size-val"></span>
-            <button class="btn edge-size-plus" type="button">+</button>
-          </div>
+    <div id="geometrySettingsContainer">
+      <details class="section section-collapsible" id="sectionColors">
+        <summary class="label collapsible-head">1 · Colors &amp; Smoothing</summary>
+        <div class="collapsible-body">
+        <div class="field" id="colorCountField">
+          <label for="ccount">Colors ${tip('How many distinct filament colors the image is split into. Each color becomes a separate part in the export.')}</label>
+          <select id="ccount">
+            <option value="2">2 Colors</option>
+            <option value="3">3 Colors</option>
+            <option value="4">4 Colors</option>
+            <option value="5">5 Colors</option>
+            <option value="6">6 Colors</option>
+            <option value="7">7 Colors</option>
+            <option value="8">8 Colors</option>
+            <option value="9">9 Colors</option>
+            <option value="10">10 Colors</option>
+            <option value="11">11 Colors</option>
+            <option value="12">12 Colors</option>
+          </select>
         </div>
-        <div class="gedge-row">
-          <span class="gedge-name">Clicker base</span>
-          <div class="edge-style-btns" data-edge="clickerBase">
-            <button class="edge-style-btn active" data-style="none" type="button">None</button>
-            <button class="edge-style-btn" data-style="fillet" type="button">Fillet</button>
-            <button class="edge-style-btn" data-style="chamfer" type="button">Chamfer</button>
+        <div class="prow-stacked" id="smoothingField">
+          <div class="prow-header">
+            <label for="smooth">Smoothing ${tip('Simplifies and smooths the traced outlines. Higher values give fewer, cleaner edges; lower keeps more fine detail.')}</label>
+            <input type="text" class="val" id="smoothVal" />
           </div>
-          <div class="edge-size-btns gedge-size" data-edge="clickerBase" style="display:none;">
-            <button class="btn edge-size-minus" type="button">−</button>
-            <span class="edge-size-val"></span>
-            <button class="btn edge-size-plus" type="button">+</button>
-          </div>
+          <input type="range" id="smooth" min="0" max="1" step="0.05" />
         </div>
-      </div>
-
-      <details class="more-settings">
-        <summary>More settings</summary>
-        <div class="more-settings-body">
-          <div class="prow-stacked">
-            <div class="prow-header">
-              <label for="topthick">Top thickness ${tip('Thickness of the solid top layer beneath the colored image, in mm.')}</label>
-              <input type="text" class="val" id="topthickVal" />
-            </div>
-            <input type="range" id="topthick" min="1" max="4" step="0.1" />
-          </div>
-          <div class="prow-stacked">
-            <div class="prow-header">
-              <label for="imgdepth">Image depth ${tip('How far the colored image is raised into the top surface, in mm.')}</label>
-              <input type="text" class="val" id="imgdepthVal" />
-            </div>
-            <input type="range" id="imgdepth" min="0.2" max="3" step="0.1" />
-          </div>
-          <div class="prow-stacked">
-            <div class="prow-header">
-              <label for="tol">Fit tolerance ${tip('Clearance around the MX switch socket so the cap fits without being too tight or too loose, in mm.')}</label>
-              <input type="text" class="val" id="tolVal" />
-            </div>
-            <input type="range" id="tol" min="0.2" max="0.8" step="0.05" />
-          </div>
+        <div class="palette" id="palette">
+          <div class="hint">Load an image/vector to pick colors.</div>
+        </div>
         </div>
       </details>
+
+      <details class="section section-collapsible" id="sectionShape">
+        <summary class="label collapsible-head">2 · More Settings</summary>
+        <div class="collapsible-body">
+        <div class="switch-row" style="margin-bottom: 16px;">
+          <span class="switch-label">Keychain loop ${tip('Adds a small loop to the body so you can attach the clicker to a keychain.')}</span>
+          <label class="toggle"><input id="keychain" type="checkbox" /><span class="slider"></span></label>
+        </div>
+
+        <div class="global-edges" id="globalEdges" style="display:none; margin-bottom: 16px;">
+          <span class="gedge-heading">Edges ${tip('Round (fillet) or bevel (chamfer) the outer edges. “Cap top” shapes the keycap’s top rim. “Clicker base” shapes the body’s top and bottom edges together.')}</span>
+          <div class="gedge-row">
+            <span class="gedge-name">Cap top</span>
+            <div class="edge-style-btns" data-edge="capTop">
+              <button class="edge-style-btn active" data-style="none" type="button">None</button>
+              <button class="edge-style-btn" data-style="fillet" type="button">Fillet</button>
+              <button class="edge-style-btn" data-style="chamfer" type="button">Chamfer</button>
+            </div>
+            <div class="edge-size-btns gedge-size" data-edge="capTop" style="display:none;">
+              <button class="btn edge-size-minus" type="button">−</button>
+              <span class="edge-size-val"></span>
+              <button class="btn edge-size-plus" type="button">+</button>
+            </div>
+          </div>
+          <div class="gedge-row">
+            <span class="gedge-name">Clicker base</span>
+            <div class="edge-style-btns" data-edge="clickerBase">
+              <button class="edge-style-btn active" data-style="none" type="button">None</button>
+              <button class="edge-style-btn" data-style="fillet" type="button">Fillet</button>
+              <button class="edge-style-btn" data-style="chamfer" type="button">Chamfer</button>
+            </div>
+            <div class="edge-size-btns gedge-size" data-edge="clickerBase" style="display:none;">
+              <button class="btn edge-size-minus" type="button">−</button>
+              <span class="edge-size-val"></span>
+              <button class="btn edge-size-plus" type="button">+</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="prow-stacked">
+          <div class="prow-header">
+            <label for="topthick">Top thickness ${tip('Thickness of the solid top layer beneath the colored image, in mm.')}</label>
+            <input type="text" class="val" id="topthickVal" />
+          </div>
+          <input type="range" id="topthick" min="1" max="4" step="0.1" />
+        </div>
+        <div class="prow-stacked">
+          <div class="prow-header">
+            <label for="imgdepth">Image depth ${tip('How far the colored image is raised into the top surface, in mm.')}</label>
+            <input type="text" class="val" id="imgdepthVal" />
+          </div>
+          <input type="range" id="imgdepth" min="0.2" max="3" step="0.1" />
+        </div>
+        <div class="prow-stacked">
+          <div class="prow-header">
+            <label for="tol">Fit tolerance ${tip('Clearance around the MX switch socket so the cap fits without being too tight or too loose, in mm.')}</label>
+            <input type="text" class="val" id="tolVal" />
+          </div>
+          <input type="range" id="tol" min="0.2" max="0.8" step="0.05" />
+        </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="sidebar-sticky-footer">
+      <div class="btn-row" id="historyControls">
+        <button id="undoBtn" class="secondary" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled style="display: flex; justify-content: center; align-items: center;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+        </button>
+        <button id="refreshBtn" class="secondary" type="button" title="Refresh to Original" aria-label="Refresh" disabled style="display: flex; justify-content: center; align-items: center;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        </button>
+        <button id="redoBtn" class="secondary" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled style="display: flex; justify-content: center; align-items: center;">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
+        </button>
       </div>
-    </details>
+    </div>
   `;
 
   // Populate Right Sidebar (Import, Export)
@@ -356,7 +369,13 @@ export function createUi(
       <!-- Image Panel -->
       <div id="imagePanel" class="mode-panel">
         <div class="drop" id="drop">
-          Drop an image, or <u>click to browse</u><br/>
+          <svg class="drop-icon" xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <div class="drop-title">Upload image</div>
+          <div class="drop-text">Drop an image, or <u>click to browse</u></div>
           <span style="font-size:10px; opacity:0.8; display:block; margin-top:4px;">PNG with transparency works best</span>
         </div>
         <input type="file" id="file" accept="image/*" hidden />
@@ -420,21 +439,23 @@ export function createUi(
 
     <div class="sidebar-sticky-footer">
       <button class="primary" id="export" style="width:100%; margin-bottom:10px">Download 3MF</button>
-      <div class="btn-row">
-        <button id="saveProj" class="secondary">Save project</button>
-        <button id="loadProj" class="secondary">Load project</button>
-        <input type="file" id="projFile" accept="application/json" hidden />
-      </div>
-      <div class="btn-row footer-utility-row">
-        <button id="helpToggle" class="secondary utility-btn" type="button" aria-label="Show intro and help">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <span>Help</span>
-        </button>
-        <button id="themeToggle" class="secondary utility-btn" type="button" aria-label="Toggle theme">
-          <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>
-          <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-          <span id="themeLabel">Dark mode</span>
-        </button>
+      <div id="projectSettingsContainer">
+        <div class="btn-row">
+          <button id="saveProj" class="secondary">Save project</button>
+          <button id="loadProj" class="secondary">Load project</button>
+          <input type="file" id="projFile" accept="application/json" hidden />
+        </div>
+        <div class="btn-row footer-utility-row">
+          <button id="helpToggle" class="secondary utility-btn" type="button" aria-label="Show intro and help">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span>Help</span>
+          </button>
+          <button id="themeToggle" class="secondary utility-btn" type="button" aria-label="Toggle theme">
+            <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>
+            <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            <span id="themeLabel">Dark mode</span>
+          </button>
+        </div>
       </div>
     </div>
   `;
@@ -442,12 +463,32 @@ export function createUi(
   // Global ID helper
   const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
+  // --- History bindings ---
+  $('undoBtn')?.addEventListener('click', () => cb.onUndo());
+  $('redoBtn')?.addEventListener('click', () => cb.onRedo());
+  $('refreshBtn')?.addEventListener('click', () => cb.onRefresh());
+
   // --- Image ---
   const drop = $('drop');
   const file = $<HTMLInputElement>('file');
   drop.addEventListener('click', () => file.click());
   file.addEventListener('change', () => {
     if (file.files?.[0]) cb.onUpload(file.files[0]);
+  });
+
+  drop.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    drop.classList.add('over');
+  });
+  drop.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    drop.classList.add('over');
+  });
+  drop.addEventListener('dragleave', () => {
+    drop.classList.remove('over');
+  });
+  drop.addEventListener('drop', () => {
+    drop.classList.remove('over');
   });
 
   // Global drag & drop for the whole window
@@ -698,7 +739,7 @@ export function createUi(
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
         Extrude
       </button>
-      <button class="edit-mode-btn" data-editmode="edges" type="button">
+      <button class="edit-mode-btn" data-editmode="edges" type="button" style="display:none;">
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4" ry="4"/></svg>
         Edges
       </button>
@@ -708,22 +749,6 @@ export function createUi(
       const btn = (e.target as HTMLElement).closest('[data-editmode]') as HTMLElement | null;
       if (btn) cb.onEditMode(btn.dataset.editmode as EditMode);
     });
-
-    // --- Undo / Redo toolbar (top-left of the viewport) ---
-    const historyBar = document.createElement('div');
-    historyBar.id = 'historyBar';
-    historyBar.className = 'history-bar';
-    historyBar.innerHTML = `
-      <button id="undoBtn" class="history-btn" type="button" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
-      </button>
-      <button id="redoBtn" class="history-btn" type="button" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg>
-      </button>
-    `;
-    viewport.appendChild(historyBar);
-    historyBar.querySelector('#undoBtn')?.addEventListener('click', () => cb.onUndo());
-    historyBar.querySelector('#redoBtn')?.addEventListener('click', () => cb.onRedo());
 
     // --- Extrude Panel ---
     const extrudePanel = document.createElement('div');
@@ -990,7 +1015,12 @@ export function createUi(
       </div>
     `;
     document.body.appendChild(wm);
-    const close = () => wm.remove();
+    const close = () => {
+      wm.remove();
+      if (localStorage.getItem('clicker_tutorial_dismissed') !== 'true') {
+        showTutorial();
+      }
+    };
     wm.querySelector('#welcomeClose')!.addEventListener('click', close);
     // Also dismiss on backdrop click.
     wm.addEventListener('click', (e) => {
@@ -998,9 +1028,250 @@ export function createUi(
     });
   }
 
+
+  interface TutorialStep {
+    focus: 'left' | 'center' | 'right';
+    target: string;
+    title: string;
+    text: string;
+    arrow: 'left' | 'right' | 'up' | 'down' | 'none';
+    cardPosition?: 'left' | 'right';
+  }
+
+  const TUTORIAL_STEPS: TutorialStep[] = [
+    {
+      focus: 'right',
+      target: '#importTabs',
+      title: 'Import Source',
+      text: 'Choose how to generate your 3D clicker model. You can upload any custom <strong>Image</strong> (PNG with transparency works best), choose from <strong>1700+ vector icons</strong>, import custom <strong>SVG</strong> files, or enter your own custom <strong>Text</strong>.',
+      arrow: 'right'
+    },
+    {
+      focus: 'right',
+      target: '#export',
+      title: 'Export 3MF Model',
+      text: 'Once you are satisfied with your clicker design, click here to download the high-quality, print-ready <strong>3MF file</strong>. 3MF is the modern standard format which contains multi-color data, ready to open directly in your favorite slicer (such as Bambu Studio, OrcaSlicer, or PrusaSlicer).',
+      arrow: 'right'
+    },
+    {
+      focus: 'right',
+      target: '#projectSettingsContainer',
+      title: 'Project Settings',
+      text: 'Save your work-in-progress clicker as a <code>.json</code> file to resume editing later, load previous projects, toggle between dark and light themes, or access this help guide.',
+      arrow: 'right'
+    },
+    {
+      focus: 'center',
+      target: '#app',
+      title: '3D Preview Viewport',
+      text: 'This is where you can preview your design in 3D. Tip: <strong>Left-click & drag</strong> to orbit, <strong>Right-click & drag</strong> to pan, and <strong>Scroll</strong> to zoom.',
+      arrow: 'none',
+      cardPosition: 'left'
+    },
+    {
+      focus: 'center',
+      target: '#editModeBar',
+      title: 'Paint & Height Modes',
+      text: 'Switch between <strong>Color Mode</strong> (to paint individual segments with different colors) and <strong>Extrude Mode</strong> (to adjust thickness, height, and rounded bevels/fillets of the clicker components).',
+      arrow: 'up',
+      cardPosition: 'left'
+    },
+    {
+      focus: 'left',
+      target: '#previewViewSection',
+      title: 'Assembly Preview',
+      text: 'Preview your model in an <strong>Assembled</strong> state or view it <strong>Exploded</strong> to see how all the 3D-printable parts fit together. You can also show a reference mechanical keyboard MX switch to check fitment.',
+      arrow: 'left'
+    },
+    {
+      focus: 'left',
+      target: '#baseStyleSection',
+      title: 'Base Outline Shape',
+      text: 'Select the overall base shape for your clicker. You can choose a <strong>Custom Outline</strong> (which matches your imported graphic\'s boundaries), or standard geometries like a <strong>Circle</strong> or <strong>Hexagon</strong>. You can also scale the overall size here.',
+      arrow: 'left'
+    },
+    {
+      focus: 'left',
+      target: '#geometrySettingsContainer',
+      title: 'Geometry & Style Settings',
+      text: 'Expand Section 1 to pick colors and adjust smoothing. Expand Section 2 to add a keychain loop, change thicknesses, and adjust fit tolerances.',
+      arrow: 'left'
+    },
+    {
+      focus: 'left',
+      target: '#historyControls',
+      title: 'Undo, Redo & Refresh',
+      text: 'Use these buttons to easily undo or redo your design steps, or refresh the model to its original state.',
+      arrow: 'left'
+    }
+  ];
+
+  function showTutorial() {
+    if (document.querySelector('.tutorial-card-container')) return;
+    let stepIndex = 0;
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'tutorial-backdrop';
+
+    const cardContainer = document.createElement('div');
+    cardContainer.className = 'tutorial-card-container';
+    
+    const card = document.createElement('div');
+    card.className = 'tutorial-card';
+    
+    const pointer = document.createElement('div');
+    
+    const renderStep = () => {
+      const step = TUTORIAL_STEPS[stepIndex];
+      document.body.className = `tutorial-active focus-${step.focus}`;
+      
+      // Explicitly set positioning inline to bypass CSS caching
+      cardContainer.style.justifyContent = 'center';
+      cardContainer.style.alignItems = 'center';
+      cardContainer.style.paddingLeft = '0';
+      cardContainer.style.paddingRight = '0';
+      
+      if (step.cardPosition === 'left') {
+        cardContainer.style.justifyContent = 'flex-start';
+        cardContainer.style.paddingLeft = '60px';
+      } else if (step.cardPosition === 'right') {
+        cardContainer.style.justifyContent = 'flex-end';
+        cardContainer.style.paddingRight = '60px';
+      }
+
+      // Remove any existing highlights
+      document.querySelectorAll('.tutorial-highlight').forEach(el => {
+        el.classList.remove('tutorial-highlight');
+      });
+
+      // Highlight the target element
+      const targetEl = document.querySelector(step.target) as HTMLElement;
+      if (targetEl) {
+        targetEl.classList.add('tutorial-highlight');
+      }
+
+      card.innerHTML = `
+        <button class="tutorial-card-close" aria-label="Close">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+        <h3>${step.title} (${stepIndex + 1}/${TUTORIAL_STEPS.length})</h3>
+        <p>${step.text}</p>
+        <div class="tutorial-controls">
+          <label class="tutorial-checkbox">
+            <input type="checkbox" id="tutDontShow" ${localStorage.getItem('clicker_tutorial_dismissed') === 'true' ? 'checked' : ''} />
+            Don't show again
+          </label>
+          <div class="tutorial-nav">
+            <button class="secondary" id="tutPrev" ${stepIndex === 0 ? 'disabled' : ''}>Previous</button>
+            <button class="primary" id="tutNext">${stepIndex === TUTORIAL_STEPS.length - 1 ? 'Finish' : 'Next'}</button>
+          </div>
+        </div>
+      `;
+
+      card.querySelector('.tutorial-card-close')!.addEventListener('click', closeTutorial);
+      
+      const dontShow = card.querySelector('#tutDontShow') as HTMLInputElement;
+      dontShow.addEventListener('change', () => {
+        if (dontShow.checked) {
+          localStorage.setItem('clicker_tutorial_dismissed', 'true');
+        } else {
+          localStorage.removeItem('clicker_tutorial_dismissed');
+        }
+      });
+
+      card.querySelector('#tutPrev')?.addEventListener('click', () => {
+        if (stepIndex > 0) { stepIndex--; renderStep(); }
+      });
+      card.querySelector('#tutNext')?.addEventListener('click', () => {
+        if (stepIndex < TUTORIAL_STEPS.length - 1) { stepIndex++; renderStep(); }
+        else closeTutorial();
+      });
+
+      // Position the pointer
+      if (targetEl && step.arrow !== 'none') {
+        const rect = targetEl.getBoundingClientRect();
+        pointer.className = `tutorial-pointer point-${step.arrow}`;
+        pointer.style.display = 'block';
+        
+        let arrowOffsetTop = 0;
+        let arrowOffsetLeft = 0;
+        
+        if (step.arrow === 'right') {
+          arrowOffsetTop = rect.top + rect.height / 2 - 28;
+          arrowOffsetLeft = rect.left - 70;
+        } else if (step.arrow === 'left') {
+          arrowOffsetTop = rect.top + rect.height / 2 - 28;
+          arrowOffsetLeft = rect.right + 14;
+        } else if (step.arrow === 'down') {
+          arrowOffsetTop = rect.top - 70;
+          arrowOffsetLeft = rect.left + rect.width / 2 - 28;
+        } else if (step.arrow === 'up') {
+          arrowOffsetTop = rect.bottom + 14;
+          arrowOffsetLeft = rect.left + rect.width / 2 - 28;
+        }
+        
+        pointer.style.top = `${arrowOffsetTop}px`;
+        pointer.style.left = `${arrowOffsetLeft}px`;
+        
+        pointer.innerHTML = `
+          <div class="tutorial-pointer-inner">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+              <polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+          </div>
+        `;
+      } else {
+        pointer.style.display = 'none';
+      }
+    };
+
+    const closeTutorial = () => {
+      document.body.classList.remove('tutorial-active', 'focus-left', 'focus-center', 'focus-right');
+      document.querySelectorAll('.tutorial-highlight').forEach(el => {
+        el.classList.remove('tutorial-highlight');
+      });
+      backdrop.remove();
+      cardContainer.remove();
+      pointer.remove();
+    };
+
+    cardContainer.appendChild(card);
+    document.body.appendChild(backdrop);
+    document.body.appendChild(cardContainer);
+    document.body.appendChild(pointer);
+    
+    renderStep();
+  }
+
+  function showTutorialPrompt() {
+    if (document.querySelector('.welcome-overlay') || document.querySelector('.tutorial-backdrop')) return;
+    
+    const wm = document.createElement('div');
+    wm.className = 'welcome-overlay';
+    wm.innerHTML = `
+      <div class="welcome-card" style="align-items: center; text-align: center; width: 380px; padding: 32px;">
+        <h2 style="margin-bottom: 8px;">Getting Started</h2>
+        <p style="margin-bottom: 24px;">Do you want to see the interactive tutorial?</p>
+        <div style="display: flex; gap: 12px; justify-content: center; width: 100%;">
+          <button class="secondary" id="tutPromptNo" style="flex: 1;">No</button>
+          <button class="primary" id="tutPromptYes" style="flex: 1;">Yes</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(wm);
+    
+    const close = () => wm.remove();
+    wm.querySelector('#tutPromptNo')!.addEventListener('click', close);
+    wm.querySelector('#tutPromptYes')!.addEventListener('click', () => {
+      close();
+      showTutorial();
+    });
+  }
+
   // Always greet on load, and let the header "?" button bring it back.
   showWelcome();
-  $('helpToggle').addEventListener('click', showWelcome);
+  $('helpToggle').addEventListener('click', showTutorialPrompt);
 
   function getFilamentNameAndHex(rgb: RGB): [string, string] {
     let bestHex = rgbHex(rgb);
@@ -1278,11 +1549,13 @@ export function createUi(
       }
     }
 
-    // --- Undo / redo toolbar ---
+    // --- Undo / redo / refresh toolbar ---
     const undoBtn = document.getElementById('undoBtn') as HTMLButtonElement | null;
     const redoBtn = document.getElementById('redoBtn') as HTMLButtonElement | null;
+    const refreshBtn = document.getElementById('refreshBtn') as HTMLButtonElement | null;
     if (undoBtn) undoBtn.disabled = !state.canUndo;
     if (redoBtn) redoBtn.disabled = !state.canRedo;
+    if (refreshBtn) refreshBtn.disabled = !state.canRefresh;
 
     // --- Extrude tooltip ---
     const extrudeTooltipEl = document.getElementById('extrudeTooltip');

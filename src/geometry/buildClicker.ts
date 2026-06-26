@@ -38,6 +38,18 @@ export function buildClicker(
     return o;
   };
 
+  // Traced outlines carry thousands of vertices, and round offsets (esp. the plate
+  // closing) balloon that further. Every downstream offset/extrude/boolean scales with
+  // vertex count, so collapsing near-collinear points to a print-invisible tolerance
+  // (~0.04 mm at 35 mm scale) is the single biggest speed lever in the whole build.
+  const simp = (s: Section, eps = 0.04): Section => {
+    try {
+      return typeof s.simplify === 'function' ? track(s.simplify(eps)) : s;
+    } catch {
+      return s;
+    }
+  };
+
   // --- Switch assets: drive the Z stack AND the minimum cap size ---
   const socketBB = socket.boundingBox();
   const stemBB = stem.boundingBox();
@@ -138,7 +150,9 @@ export function buildClicker(
     if (validRings.length === 0) {
       return track(CrossSection.square([sR, sR], true));
     }
-    return track(new CrossSection(validRings, 'NonZero'));
+    // Simplify the raw trace BEFORE any offset/boolean — the densest polygon in the
+    // build, so trimming it here cascades a speedup through the entire pipeline.
+    return simp(track(new CrossSection(validRings, 'NonZero')), 0.03);
   };
 
   const roundedRect = (w: number, h: number, r: number): Section => {
@@ -146,14 +160,14 @@ export function buildClicker(
     const core = track(
       CrossSection.square([Math.max(0.2, w - 2 * rr), Math.max(0.2, h - 2 * rr)], true),
     );
-    return track(core.offset(rr, 'Round', 2.0, 64));
+    return track(core.offset(rr, 'Round', 2.0, 32));
   };
 
   const grow = (sec: Section, d: number): Section =>
-    d <= 0.001 ? sec : track(sec.offset(d, 'Round', 2.0, 64));
+    d <= 0.001 ? sec : track(sec.offset(d, 'Round', 2.0, 32));
   const shrink = (sec: Section, d: number, fb: Section): Section => {
     if (d <= 0.01) return sec;
-    const r = track(sec.offset(-d, 'Round', 2.0, 64));
+    const r = track(sec.offset(-d, 'Round', 2.0, 32));
     return sectionIsEmpty(r) ? fb : r;
   };
 
@@ -257,13 +271,15 @@ export function buildClicker(
   // --- Cap plate footprint (the visible top; image + frame) ---
   let plate: Section;
   if (params.baseShape === 'outline') {
-    const rawPlate = track(filledOutline().offset(border, 'Round', 2.0, 48));
+    const rawPlate = track(filledOutline().offset(border, 'Round', 2.0, 32));
     const solidPlate = removeHoles(rawPlate);
     // Apply morphological closing (+offset followed by -offset) to smooth out
     // deep scalloped indentations between letters. This prevents the clicker
     // from binding or sticking due to excessive friction in the sharp valleys.
+    // Then simplify: the round closing fills perimeter arcs with hundreds of points
+    // that every later op would carry — collapse them to a print-invisible tolerance.
     const smoothingRadius = 4.0;
-    plate = track(solidPlate.offset(smoothingRadius, 'Round', 2.0, 48).offset(-smoothingRadius, 'Round', 2.0, 48));
+    plate = simp(track(solidPlate.offset(smoothingRadius, 'Round', 2.0, 24).offset(-smoothingRadius, 'Round', 2.0, 24)), 0.05);
   } else {
     // The geometric shapes scale linearly with their radius, so rather than guessing
     // a circumscribing radius (which clips the image on concave shapes like the star
@@ -308,8 +324,8 @@ export function buildClicker(
   // border then wraps whatever shape the well becomes — it bulges out only where a
   // notch would otherwise block the switch.
   const socketColumn = roundedRect(switchClear, switchClear, 2.5); // centered on the switch axis
-  const wellFootprint = track(grow(plate, tol).add(socketColumn)); // cap slips in with `tol`
-  const bodyFootprint = grow(wellFootprint, Math.max(0.4, params.borderWidth));
+  const wellFootprint = simp(track(grow(plate, tol).add(socketColumn))); // cap slips in with `tol`
+  const bodyFootprint = simp(grow(wellFootprint, Math.max(0.4, params.borderWidth)));
 
   // --- Z layout (shared assembly frame: Z = 0 is the switch-plate top) ---
   const cavityFloorZ = socketBB.max[2]; // socket top = plate plane (≈ 0); the well opens to it
@@ -348,40 +364,46 @@ export function buildClicker(
     return track(track(Manifold.extrude(cs, Math.max(0.01, h))).translate([0, 0, z]));
   };
 
-  // Build the solid to SUBTRACT from a part to round (fillet) or bevel (chamfer) one
-  // of its horizontal edges. It is a stack of thin offset rings approximating the
-  // profile — fillet = quarter circle, chamfer = straight 45°.
+  // Build the solid to SUBTRACT from a part to bevel (chamfer) one of its horizontal
+  // edges, as a single-face true chamfer via scaled extrusion — no stepped staircase,
+  // so it stays cheap. `outer` grows the cutter past the wall so it never shares a
+  // coplanar face with it (coplanar faces z-fight in the preview).
   //
-  // Two things make it look clean instead of a chunky, striped staircase:
-  //  • Step count scales with the radius, so the curve is finely tessellated.
-  //  • Each ring's OUTER edge is grown past the part wall (`outer`), so the cutter
-  //    never shares a coplanar face with the wall — coplanar faces z-fight in the
-  //    preview and that was the horizontal striping artifact.
-  const createEdgeBevelBlock = (footprint: Section, r: number, style: EdgeStyle, zRef: number, isBottom: boolean): Solid | null => {
-    const steps = Math.max(16, Math.min(40, Math.round(r * 14))); // ~0.07mm/step, smooth but not too costly
-    const outer = grow(footprint, 0.6); // extends the cutter just beyond the wall
-    let block: Solid | null = null;
-    for (let i = 0; i < steps; i++) {
-      const t1 = i / steps;
-      const t2 = (i + 1) / steps;
+  // (The old per-step fillet path was removed: only the default fixed chamfers run now,
+  // so anything non-'none' is treated as a chamfer.)
+  const createEdgeBevelBlock = (footprint: Section, r: number, _style: EdgeStyle, zRef: number, isBottom: boolean): Solid | null => {
+      const outer = grow(footprint, 0.6); // extends the cutter just beyond the wall
 
-      const r1 = style === 'chamfer' ? r * t1 : r * (1 - Math.cos((t1 * Math.PI) / 2));
-      const z1 = style === 'chamfer' ? r * t1 : r * Math.sin((t1 * Math.PI) / 2);
-      const z2 = style === 'chamfer' ? r * t2 : r * Math.sin((t2 * Math.PI) / 2);
+      const b = footprint.bounds();
+      const W = b.max[0] - b.min[0];
+      const H = b.max[1] - b.min[1];
+      const cx = (b.min[0] + b.max[0]) / 2;
+      const cy = (b.min[1] + b.max[1]) / 2;
 
-      const widthToSubtract = r - r1;
-      if (widthToSubtract < 0.005) continue;
+      const scaleX = W > 0.01 ? Math.max(0.01, (W - 2 * r) / W) : 1;
+      const scaleY = H > 0.01 ? Math.max(0.01, (H - 2 * r) / H) : 1;
 
-      const innerSection = track(footprint.offset(-widthToSubtract, 'Round', 2.0, 64));
-      // When the inset collapses (radius ≈ half the part), remove the whole column.
-      const ring = sectionIsEmpty(innerSection) ? outer : track(outer.subtract(innerSection));
-      const dz = z2 - z1;
-      const stepZ = isBottom ? zRef + z1 : zRef - z2;
+      // Center the 2D sections so extrude's scaleTop pivots about the footprint center.
+      const centeredOuter = track(outer.translate([-cx, -cy]));
+      const centeredFp = track(footprint.translate([-cx, -cy]));
 
-      const stepSolid = extrudeAt(ring, dz + 0.02, stepZ);
-      block = block ? track(block.add(stepSolid)) : stepSolid;
-    }
-    return block;
+      const boundingVolume = track(Manifold.extrude(centeredOuter, r + 0.02));
+      const partVolume = track(Manifold.extrude(centeredFp, r + 0.02, 0, 0, [scaleX, scaleY]));
+
+      let cutter = track(boundingVolume.subtract(partVolume));
+      cutter = track(cutter.translate([cx, cy, 0]));
+
+      if (isBottom) {
+        // Mirror along Z so the chamfer slopes outwards toward the bottom face.
+        cutter = track(
+          cutter.translate([0, 0, -(r + 0.02) / 2])
+            .scale([1, 1, -1])
+            .translate([0, 0, (r + 0.02) / 2]),
+        );
+      }
+
+      const stepZ = isBottom ? zRef - 0.02 : zRef - r;
+      return track(cutter.translate([0, 0, stepZ]));
   };
 
   const parts: ClickerPart[] = [];
@@ -398,12 +420,12 @@ export function buildClicker(
     .sort((a, b) => (a.r.coverage ?? 1) - (b.r.coverage ?? 1));
     
   let placed2D: Section | null = null; // 2D union of inlays already carved (no overlap)
-  let holeUnion: Solid | null = null; // 3D union of all holes to subtract from base
+  const holesByLevel = new Map<number, Section>();
 
   for (const { r } of ordered) {
     const validRings = scaleRings(r.rings).filter(ring => ring.length >= 3 && getRingArea(ring) > 0.001);
     if (validRings.length === 0) continue;
-    let cs: Section = track(new CrossSection(validRings, 'NonZero'));
+    let cs: Section = simp(track(new CrossSection(validRings, 'NonZero')), 0.03);
     if (params.colorBleed > 0.001) cs = grow(cs, params.colorBleed);
     const clipped = track(cs.intersect(imageArea));
     if (sectionIsEmpty(clipped)) continue;
@@ -423,9 +445,9 @@ export function buildClicker(
     let inlay: Solid = extrudeAt(fp, topZ - bottomZ, bottomZ);
     if (inlay.isEmpty()) continue;
 
-    // Round (fillet) or bevel (chamfer) the TOP edge of this color part if the
-    // user configured it in Edges mode. A real swept profile — not a single
-    // rectangular notch — so fillet actually curves and chamfer actually angles.
+    // Round (fillet) or bevel (chamfer) the TOP edge of this color part only if the
+    // user explicitly configured it in Edges mode. Default: no rounding on inlays —
+    // only the outer cap frame and body edges get the default fillet.
     const es = params.edgeSettings?.find(s => s.target === r.partName);
     if (es && es.style !== 'none' && es.radius >= 0.05) {
       // The bevel can't exceed roughly half the part's height, so on a flat color
@@ -439,14 +461,19 @@ export function buildClicker(
 
     parts.push(toPart(inlay, 'cap', 'top', r.filamentRgb, r.partName));
     
-    // The hole carved in the base must go down to bottomZ, and extend up at least to slabTopZ 
-    // so we fully clear the original backing.
-    const holePrism = extrudeAt(fp, slabTopZ - bottomZ + 0.02, bottomZ - 0.01);
-    holeUnion = holeUnion ? track(holeUnion.add(holePrism)) : holePrism;
+    // Group the 2D footprint by its level to carve a single hole per height level
+    const existing = holesByLevel.get(level);
+    holesByLevel.set(level, existing ? track(existing.add(fp)) : fp);
   }
 
-  // Base-color cap = plate − holeUnion, then ∪ stem ∪ perimeter skirt.
-  let base: Solid = holeUnion ? track(cap.subtract(holeUnion)) : cap;
+  // Base-color cap = plate − holes, then ∪ stem ∪ perimeter skirt.
+  let base: Solid = cap;
+  for (const [level, hole2D] of holesByLevel.entries()) {
+    const heightShift = level * params.stepHeight;
+    const bottomZ = imageBottomZ + Math.min(0, heightShift);
+    const holePrism = extrudeAt(hole2D, slabTopZ - bottomZ + 0.02, bottomZ - 0.01);
+    base = track(base.subtract(holePrism));
+  }
   base = track(base.add(stem));
   if (skirtLen > 0.4) {
     // Root issue: any 2-D ring-minus-stemZone is algebraically identical to
@@ -465,7 +492,7 @@ export function buildClicker(
     const stemGuard = 12 + 2 * skirtThickness; // inner edge lands exactly at ±6 mm
     const stemGuardCs = track(CrossSection.square([stemGuard, stemGuard], true));
     const skirtBasePlate = track(plate.add(stemGuardCs));
-    const skirtInner = track(skirtBasePlate.offset(-skirtThickness, 'Round', 2.0, 64));
+    const skirtInner = track(skirtBasePlate.offset(-skirtThickness, 'Miter', 2.0));
     if (!sectionIsEmpty(skirtInner)) {
       const skirtRing = track(skirtBasePlate.subtract(skirtInner));
       // +0.3 overlaps up into the plate so the union is volumetric (no coplanar seam).
@@ -489,24 +516,39 @@ export function buildClicker(
   //     gap). The socket is cut into the well floor (= plate plane) to grip the switch. ---
   const bodyBlock = extrudeAt(bodyFootprint, bodyTopZ - bodyBottomZ, bodyBottomZ);
   const well = extrudeAt(wellFootprint, bodyTopZ - wellFloorZ + 1, wellFloorZ);
-  let body: Solid = track(track(bodyBlock.subtract(well)).subtract(socket));
+  let body: Solid = bodyBlock;
+
+  // Apply edge modifications (fillet / chamfer) to the body block first,
+  // before adding the keychain loop and bridge, so that the bevel block
+  // subtraction does not cut a groove through the keychain loop/bridge.
+  body = applyEdges(body, params.edgeSettings, bodyFootprint, bodyBottomZ, bodyTopZ, wellFloorZ);
 
   // Optional keychain loop: a disc tab on the +Y edge with a ring hole through it.
-  if (params.keychainHole && !body.isEmpty()) {
+  if (params.keychainHole) {
     const bb = bodyFootprint.bounds();
     const loopR = 5.0;
     const holeR = 2.6;
     const cy = bb.max[1] + loopR * 0.35; // overlaps the body so it fuses
     const th = Math.max(2.5, Math.min(4.0, (bodyTopZ - bodyBottomZ) * 0.35));
-    const zb = bodyBottomZ + 1.5;
-    const loop = extrudeAt(track(CrossSection.circle(loopR, 64).translate([0, cy])), th, zb);
+    const zb = bodyBottomZ;
+
+    // Create a circular loop and a bridge extending back through the body to fill any valley.
+    // The bridge is unioned with the body block, and then well and socket are subtracted
+    // afterwards to ensure the interior remains perfectly hollow.
+    const loopCircle = track(CrossSection.circle(loopR, 64).translate([0, cy]));
+    const bridgeHeight = cy - bb.min[1];
+    const bridge = track(CrossSection.square([loopR * 2, bridgeHeight], true).translate([0, cy - bridgeHeight / 2]));
+    const loopFootprint = track(loopCircle.add(bridge));
+
+    const loop = extrudeAt(loopFootprint, th, zb);
     const hole = extrudeAt(track(CrossSection.circle(holeR, 48).translate([0, cy])), th + 2, zb - 1);
     body = track(track(body.add(loop)).subtract(hole));
   }
 
+  // Subtract the well and socket afterwards to ensure the interior cavity is clean
+  body = track(track(body.subtract(well)).subtract(socket));
+
   if (!body.isEmpty()) {
-    // --- Edge modifications: fillet / chamfer ---
-    body = applyEdges(body, params.edgeSettings, bodyFootprint, bodyBottomZ, bodyTopZ, wellFloorZ);
     parts.push(toPart(body, 'body', 'base', params.bodyColorRgb, 'base-body'));
   }
 
