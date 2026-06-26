@@ -6,6 +6,7 @@
 // wizard no longer asks for a color mode or a filament-customization pass.
 import type { RgbaImage } from '../image/decode';
 import { preprocessImage } from '../image/adjust';
+import { removeBackground } from '../image/matte';
 import { DEFAULT_PREPROCESS, type CropRatio, type PreprocessParams, type RGB } from '../types';
 
 export interface WizardResult {
@@ -41,6 +42,24 @@ const RATIOS: [CropRatio, string][] = [
   ['3:2', '3:2'],
   ['16:9', '16:9'],
 ];
+
+const ALPHA_THRESHOLD = 128;
+
+/** True if the image would still have foreground after background removal, i.e.
+ *  the build pipeline would find an outline to trace. Keeping the background
+ *  means every pixel is foreground, so an outline always exists. */
+function hasOutline(img: RgbaImage, keepBackground: boolean): boolean {
+  if (keepBackground) return true;
+  const clone: RgbaImage = {
+    data: new Uint8ClampedArray(img.data),
+    width: img.width,
+    height: img.height,
+  };
+  removeBackground(clone); // mutates the clone, never the live preview image
+  let fg = 0;
+  for (let p = 3; p < clone.data.length; p += 4) if (clone.data[p] >= ALPHA_THRESHOLD) fg++;
+  return fg > 8; // a few stray pixels won't trace into a usable region
+}
 
 function imageToCanvas(img: RgbaImage): HTMLCanvasElement {
   const c = document.createElement('canvas');
@@ -103,15 +122,25 @@ export function runWizard(opts: WizardOpts) {
           </div>
         </div>
         <div class="wz-foot">
+          <span class="wz-error" id="wzErr" hidden>No outline found — adjust the image and try again.</span>
           <button id="wzCancel">Cancel</button>
           <button class="primary" id="wzDone">Confirm</button>
         </div>
       </div>`;
 
     const prev = overlay.querySelector<HTMLElement>('#wzPrev')!;
+    const done = overlay.querySelector<HTMLButtonElement>('#wzDone')!;
+    const err = overlay.querySelector<HTMLElement>('#wzErr')!;
+    // Mirror the build pipeline's foreground check so the user can't confirm an
+    // image (e.g. one darkened until it's all background) that would silently
+    // trace into nothing.
     const redraw = () => {
+      const a = adjusted();
       prev.innerHTML = '';
-      prev.appendChild(imageToCanvas(adjusted()));
+      prev.appendChild(imageToCanvas(a));
+      const ok = hasOutline(a, params.keepBackground);
+      done.disabled = !ok;
+      err.hidden = ok;
     };
     redraw();
 
@@ -127,7 +156,10 @@ export function runWizard(opts: WizardOpts) {
 
     const keep = overlay.querySelector<HTMLInputElement>('#wzKeep')!;
     keep.checked = params.keepBackground;
-    keep.addEventListener('change', () => (params.keepBackground = keep.checked));
+    keep.addEventListener('change', () => {
+      params.keepBackground = keep.checked;
+      redraw();
+    });
 
     const thick = overlay.querySelector<HTMLInputElement>('#wzThick')!;
     thick.value = String(params.thicknessMm);
@@ -152,7 +184,8 @@ export function runWizard(opts: WizardOpts) {
     }
 
     overlay.querySelector('#wzCancel')!.addEventListener('click', cancel);
-    overlay.querySelector('#wzDone')!.addEventListener('click', () => {
+    done.addEventListener('click', () => {
+      if (done.disabled) return;
       close();
       opts.onComplete({
         adjusted: adjusted(),

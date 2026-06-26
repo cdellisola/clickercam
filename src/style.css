@@ -59,8 +59,34 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 }
 .topbar-btn svg { flex: 0 0 auto; }
 .topbar-btn:hover { border-color: var(--accent); color: var(--accent); }
-.donate-makerworld:hover { border-color: #f97316; color: #f97316; }
-.donate-kofi:hover { border-color: #ff5e5b; color: #ff5e5b; }
+
+/* Commercial license + Ko-fi: red, emphasized (same size as the others) */
+.topbar-license,
+.donate-kofi {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: #ffffff;
+  font-weight: 700;
+}
+.topbar-license:hover,
+.donate-kofi:hover {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
+}
+
+/* MakerWorld: green */
+.donate-makerworld {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #ffffff;
+  font-weight: 600;
+}
+.donate-makerworld:hover {
+  background: #15803d;
+  border-color: #15803d;
+  color: #ffffff;
+}
 
 #layout {
   display: grid;
@@ -86,43 +112,52 @@ body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 .sidebar.left { border-right: 1px solid var(--line); }
 .sidebar.right { border-left: 1px solid var(--line); }
 
-/* App header: title, subtitle, credit, then stacked action buttons */
+/* App header: title, subtitle, credit. Utility buttons (help/theme) live in the
+   right-sidebar footer to keep this compact. */
 .app-header {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
-  margin-bottom: 6px;
+  gap: 5px;
+  margin-bottom: 4px;
 }
 h1 { font-size: 19px; margin: 0; letter-spacing: 0.2px; font-weight: 600; }
 .app-subtitle { color: var(--muted); font-size: 15px; margin: 2px 0 0; font-weight: 400; line-height: 1.35; }
 .app-credit { color: var(--muted); font-size: 14px; margin: 2px 0 0; }
-.app-credit a { color: var(--accent); text-decoration: none; font-weight: 500; }
-.app-credit a:hover { text-decoration: underline; }
-
-/* Header action buttons (help + theme toggle), stacked with text labels */
-.header-actions { display: flex; flex-direction: column; align-items: stretch; gap: 8px; margin-top: 10px; }
-.labeled-btn {
+.app-credit-link {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  padding: 8px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: var(--panel-2);
-  color: var(--muted);
-  font-size: 14px;
+  gap: 6px;
+  color: var(--accent);
+  text-decoration: none;
   font-weight: 500;
-  cursor: pointer;
-  transition: border-color 0.12s, color 0.12s;
+  vertical-align: middle;
 }
-.labeled-btn:hover { border-color: var(--accent); color: var(--accent); }
-.labeled-btn svg { flex: 0 0 auto; }
+.app-credit-link:hover { text-decoration: underline; }
+.credit-logo { width: 16px; height: 16px; border-radius: 4px; object-fit: contain; }
+.only-dark, .only-light { display: none; }
+:root[data-theme="dark"] .only-dark,
+:root:not([data-theme="light"]) .only-dark { display: inline-block; }
+:root[data-theme="light"] .only-light { display: inline-block; }
+
 /* Theme button shows only the icon for the mode you'll switch to */
 #themeToggle svg { display: none; }
 :root[data-theme="dark"] #themeToggle svg.icon-sun,
 :root:not([data-theme="light"]) #themeToggle svg.icon-sun { display: block; }
 :root[data-theme="light"] #themeToggle svg.icon-moon { display: block; }
+
+/* Footer utility row (Help + theme toggle), inline under Save/Load project */
+.footer-utility-row { margin-top: 10px; }
+.utility-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.utility-btn svg { flex: 0 0 auto; }
 
 /* "?" help marker + floating tooltip bubble */
 .help-tip {
@@ -186,9 +221,41 @@ h1 { font-size: 19px; margin: 0; letter-spacing: 0.2px; font-weight: 600; }
 .more-settings > summary:hover { color: var(--accent); }
 .more-settings-body { padding-top: 8px; }
 
-.section { border-top: 1px solid var(--line); padding: 18px 0; }
-.section:first-of-type { border-top: none; padding-top: 0; }
-.label { font-size: 14px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); margin-bottom: 10px; }
+.section { border-top: 1px solid var(--line); padding: 22px 0; }
+.section:first-of-type { border-top: none; padding-top: 4px; }
+
+/* Collapsible sections (Colors, Shape & Size). The header (summary) is a bolder
+   white label; the base-style controls sit in their own always-visible .section
+   above, so they stay put when these are collapsed. */
+details.section-collapsible { padding: 0; }
+details.section-collapsible > summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0;
+  padding: 22px 0;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0.2px;
+}
+details.section-collapsible > summary::-webkit-details-marker { display: none; }
+details.section-collapsible > summary::before {
+  content: "›";
+  font-size: 18px;
+  line-height: 1;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+details.section-collapsible[open] > summary::before { transform: rotate(90deg); }
+details.section-collapsible > summary:hover { color: var(--accent); }
+details.section-collapsible[open] > summary { padding-bottom: 14px; }
+.collapsible-body { padding-bottom: 22px; }
+.label { display: block; font-size: 14px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); margin-bottom: 14px; }
 
 /* Grid alignments for controls — stacked layout */
 .prow-stacked {
@@ -340,13 +407,22 @@ button.secondary:disabled { opacity: .5; cursor: default; }
   border: 1px solid transparent; cursor: pointer; background: var(--panel-2); }
 .fil-row:hover { background: rgba(255,255,255,0.02); }
 .fil-row.focused { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
-.slot-no { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px;
+.slot-no { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 22px;
   border-radius: 6px; background: var(--panel); border: 1px solid var(--line); color: var(--muted);
   font-size: 13px; font-weight: 600; flex: 0 0 auto; }
 .fil-row.focused .slot-no { color: var(--accent); border-color: var(--accent); }
 .fil { display: inline-flex; align-items: center; gap: 6px; position: relative; }
 .fil-chip { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--line); }
 .fil-row .cov { color: var(--muted); font-size: 14px; margin-left: auto; min-width: 38px; text-align: right; }
+/* The body row's label is a word, not a slot number, so give it a wider pill. */
+.fil-row .slot-no.slot-body {
+  width: 40px;
+  min-width: 40px;
+  padding: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.1px;
+}
 
 .stepper { display: inline-flex; align-items: center; gap: 3px; }
 .stepper button { padding: 2px 9px; border-radius: 8px; line-height: 1.3; font-size: 17.5px; background: var(--panel); }
@@ -406,9 +482,11 @@ button.secondary:disabled { opacity: .5; cursor: default; }
 .wz-body { padding: 22px 25px; overflow: auto; }
 .wz-body.center { display: flex; justify-content: center; }
 .wz-body.col { display: flex; flex-direction: column; align-items: center; gap: 15px; }
-.wz-foot { display: flex; justify-content: flex-end; gap: 12px; padding: 18px 25px;
-  border-top: 1px solid var(--line); }
+.wz-foot { display: flex; align-items: center; justify-content: flex-end; gap: 12px;
+  padding: 18px 25px; border-top: 1px solid var(--line); }
 .wz-foot .primary { min-width: 120px; }
+.wz-error { margin-right: auto; color: #ff6b6b; font-size: 14px; font-weight: 600; }
+.wz-error[hidden] { display: none; }
 
 .wz-body { display: grid; }
 .wz-modal.lg .wz-body { grid-template-columns: 1fr 400px; gap: 28px; }
@@ -548,6 +626,122 @@ button.secondary:disabled { opacity: .5; cursor: default; }
   justify-content: flex-end;
   gap: 12px;
 }
+
+/* ---- License reminder: full-screen modal (first download) ---- */
+.license-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.25s ease;
+}
+.license-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  width: min(520px, 94vw);
+  padding: 32px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.license-badge {
+  align-self: flex-start;
+  background: var(--accent-2);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 999px;
+}
+.license-card h2 { margin: 0; font-size: 23px; font-weight: 700; }
+.license-card p { margin: 0; color: var(--muted); font-size: 15px; line-height: 1.55; }
+.license-card a { color: var(--accent); font-weight: 600; }
+
+/* The commercial block is the visual focal point. */
+.license-commercial {
+  background: rgba(239, 68, 68, 0.08);
+  border: 2px solid #ef4444;
+  border-radius: 14px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.license-commercial-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+}
+.license-commercial-title span { color: #ef4444; text-decoration: underline; }
+.license-price { color: #ef4444; }
+.license-cta {
+  align-self: flex-start;
+  background: #ef4444;
+  color: #fff !important;
+  font-weight: 700;
+  font-size: 15px;
+  padding: 11px 20px;
+  border-radius: 10px;
+  text-decoration: none;
+  transition: background 0.12s, transform 0.1s;
+}
+.license-cta:hover { background: #dc2626; }
+.license-cta:active { transform: scale(0.98); }
+.license-foot { display: flex; justify-content: flex-end; }
+
+/* ---- License reminder: corner toast (subsequent downloads) ---- */
+.license-toast {
+  position: fixed;
+  top: 70px;
+  right: 24px;
+  z-index: 300;
+  width: min(320px, 88vw);
+  background: var(--panel);
+  border: 2px solid #ef4444;
+  border-radius: 14px;
+  padding: 16px 18px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transform: translateX(calc(100% + 32px));
+  opacity: 0;
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease;
+}
+.license-toast.show { transform: translateX(0); opacity: 1; }
+.license-toast-title { font-size: 15px; font-weight: 700; color: var(--accent-2); }
+.license-toast p { margin: 0; font-size: 13.5px; line-height: 1.45; color: var(--muted); }
+.license-toast-cta {
+  align-self: flex-start;
+  margin-top: 2px;
+  background: #ef4444;
+  color: #fff;
+  font-weight: 700;
+  font-size: 13.5px;
+  padding: 8px 14px;
+  border-radius: 9px;
+  text-decoration: none;
+  transition: background 0.12s;
+}
+.license-toast-cta:hover { background: #dc2626; }
+.license-toast-x {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.license-toast-x:hover { color: var(--text); }
 
 /* Import Grid Selector (2x2 Cards Layout) */
 .import-grid {
@@ -1297,6 +1491,37 @@ button.fil-chip:active {
   color: var(--accent-text);
   border-color: var(--accent);
 }
+
+/* Empty-state hint inside the floating Edges panel (nothing selected). */
+.edges-empty {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  text-align: center;
+  padding: 4px 2px;
+}
+
+/* ===== Global edges in the left Shape & Size panel ===== */
+.global-edges {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 18px;
+  margin-bottom: 2px;
+}
+.gedge-heading { display: block; font-size: 15px; color: var(--muted); }
+.gedge-row { display: flex; flex-direction: column; gap: 7px; }
+.gedge-name { font-size: 14.5px; color: var(--text); }
+.global-edges .edge-style-btn { font-size: 12.5px; padding: 7px 0; }
+.gedge-size { align-items: center; gap: 8px; }
+.gedge-size .edge-size-val {
+  flex: 1;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.gedge-size .btn { flex: 0 0 auto; padding: 7px 16px; }
 
 /* Generic button used inside the floating extrude/edges panels (+/- steppers). */
 .btn {

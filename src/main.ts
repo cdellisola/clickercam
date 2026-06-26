@@ -64,8 +64,8 @@ const store = createStore<UiState>({
   editMode: 'color',
   edgeSettings: [
     { target: 'capTop', style: 'none', radius: 0 },
-    { target: 'baseTop', style: 'none', radius: 0 },
-    { target: 'baseBottom', style: 'none', radius: 0 },
+    // One control for the whole clicker base — bevels top + bottom body edges together.
+    { target: 'clickerBase', style: 'none', radius: 0 },
   ],
   extrudeHeight: null,
   componentHeights: {},
@@ -117,17 +117,11 @@ const ui = createUi(sidebarLeft, sidebarRight, statusEl, {
     debouncedReprocess();
   },
   onFilament: (i, hex) => {
-    const palette = store.get().palette.slice();
-    if (palette[i]) {
-      palette[i] = { ...palette[i], filamentRgb: hexToRgb(hex) };
-      store.set({ palette });
-      
-      const overrides = store.get().paletteOverrides.slice();
-      overrides[i] = hexToRgb(hex);
-      store.set({ paletteOverrides: overrides });
-
-      debouncedRebuild();
-    }
+    // Live recolor (same path as clicking the color on the 3D model). A color change
+    // never changes geometry, so we skip the full worker rebuild — picking a filament
+    // in the left menu now behaves exactly like recoloring in Color mode.
+    if (!store.get().palette[i]) return;
+    applyModelRecolor({ kind: 'region', index: i, compIndex: 0 }, hexToRgb(hex), -1);
   },
   onShape: (kind) => {
     store.set({ baseShape: kind });
@@ -171,7 +165,13 @@ const ui = createUi(sidebarLeft, sidebarRight, statusEl, {
   },
   onSection: (axis, pos) => viewer.setSection(axis, pos),
   onExport: () => {
-    if (latestParts.length) downloadThreeMF(latestParts, 'clicker.3mf');
+    if (!latestParts.length) return;
+    downloadThreeMF(latestParts, 'clicker.3mf');
+    // First download of the session → big license modal; later ones → quiet corner toast.
+    // The counter is in-memory, so a page refresh re-shows the big modal on the next download.
+    downloadCount += 1;
+    if (downloadCount === 1) showLicenseModal();
+    else showLicenseToast();
   },
   onRenderPng: async () => {
     const blob = await viewer.renderToPng();
@@ -189,8 +189,10 @@ const ui = createUi(sidebarLeft, sidebarRight, statusEl, {
   onSaveProject: () => saveProject(),
   onLoadProject: (file) => loadProject(file),
   onBodyColor: (hex) => {
-    store.set({ bodyColorRgb: hexToRgb(hex) });
-    debouncedRebuild();
+    // Live recolor of the clicker body — no rebuild (geometry is unchanged).
+    const idx = latestParts.findIndex((p) => p.name === 'base-body');
+    if (idx >= 0) applyModelRecolor({ kind: 'body' }, hexToRgb(hex), idx);
+    else store.set({ bodyColorRgb: hexToRgb(hex) });
   },
 
   onImportMode: (mode) => {
@@ -834,6 +836,76 @@ function rgbToHex(rgb: RGB): string {
 }
 function firstLine(s: string): string {
   return s.split('\n')[0];
+}
+
+// ---- License reminders on download ----
+// In-memory only (resets on refresh) so the big modal reappears for new sessions.
+let downloadCount = 0;
+
+const COMMERCIAL_URL = 'https://makerworld.com/en/@Vostok_Labs#commercial-membership-open';
+const LICENSE_URL = 'https://github.com/vostoklabs/Clicker-Generator/blob/main/LICENSE.md';
+
+function showLicenseModal() {
+  if (document.querySelector('.license-overlay')) return;
+  const wm = document.createElement('div');
+  wm.className = 'license-overlay';
+  wm.innerHTML = `
+    <div class="license-card">
+      <div class="license-badge">✓ Download started</div>
+      <h2>Free for personal use 🎉</h2>
+      <p>
+        This generator and the designs it creates are released under a
+        <a href="${LICENSE_URL}" target="_blank" rel="noopener noreferrer">personal-use license</a>.
+        Print as many as you like for yourself, completely free.
+      </p>
+      <div class="license-commercial">
+        <div class="license-commercial-title">💰 Want to <span>sell</span> your prints?</div>
+        <p>
+          If you plan to sell these as 3D-printed products, you need a
+          <strong>commercial license membership</strong>, it's just
+          <strong class="license-price">$15&nbsp;/&nbsp;month</strong> and unlocks full commercial rights.
+        </p>
+        <a class="license-cta" href="${COMMERCIAL_URL}" target="_blank" rel="noopener noreferrer">
+          Get the commercial license →
+        </a>
+      </div>
+      <div class="license-foot">
+        <button class="primary" id="licenseClose" style="min-width:150px">Got it</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(wm);
+  const close = () => wm.remove();
+  wm.querySelector('#licenseClose')!.addEventListener('click', close);
+  wm.addEventListener('click', (e) => {
+    if (e.target === wm) close();
+  });
+}
+
+let licenseToastTimer: number | undefined;
+function showLicenseToast() {
+  document.querySelector('.license-toast')?.remove();
+  if (licenseToastTimer) window.clearTimeout(licenseToastTimer);
+  const t = document.createElement('div');
+  t.className = 'license-toast';
+  t.innerHTML = `
+    <button class="license-toast-x" aria-label="Dismiss">×</button>
+    <div class="license-toast-title">✓ Free for personal use</div>
+    <p>Selling printed designs? You need a commercial license.</p>
+    <a class="license-toast-cta" href="${COMMERCIAL_URL}" target="_blank" rel="noopener noreferrer">
+      Get commercial license →
+    </a>
+  `;
+  document.body.appendChild(t);
+  // Trigger the slide-in transition on the next frame.
+  requestAnimationFrame(() => t.classList.add('show'));
+  const dismiss = () => {
+    t.classList.remove('show');
+    window.setTimeout(() => t.remove(), 300);
+  };
+  t.querySelector('.license-toast-x')!.addEventListener('click', dismiss);
+  // Linger long enough not to miss it.
+  licenseToastTimer = window.setTimeout(dismiss, 9000);
 }
 
 // ---- Render / project save-load / AI prompt ----

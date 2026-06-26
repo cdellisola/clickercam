@@ -7,6 +7,9 @@ import type { FontOption } from '../image/letter';
 import { FONT_OPTIONS, loadBundledFonts } from '../image/letter';
 import { LUCIDE_ICONS, buildSvg, svgDataUrl } from '../image/lucideIcons';
 
+/** Base path for bundled public assets (favicon logos, etc.). */
+const ASSET_BASE = import.meta.env.BASE_URL;
+
 export interface UiState {
   status: string;
   building: boolean;
@@ -153,18 +156,13 @@ export function createUi(
     <div class="app-header">
       <h1>Clicker Generator</h1>
       <p class="app-subtitle">Generate printable 3D model of a clicker from an image</p>
-      <p class="app-credit">Made by <a href="https://makerworld.com/en/@Vostok_Labs" target="_blank" rel="noopener noreferrer">vostok labs</a></p>
-      <div class="header-actions">
-        <button id="helpToggle" class="labeled-btn" type="button" aria-label="Show intro and help">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <span>Help</span>
-        </button>
-        <button id="themeToggle" class="labeled-btn" type="button" aria-label="Toggle theme">
-          <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>
-          <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-          <span id="themeLabel">Dark mode</span>
-        </button>
-      </div>
+      <p class="app-credit">Made by
+        <a class="app-credit-link" href="https://makerworld.com/en/@Vostok_Labs" target="_blank" rel="noopener noreferrer">
+          <img class="credit-logo only-dark" src="${ASSET_BASE}assets/favicon/vostokfaviconwhite.png" alt="" aria-hidden="true" />
+          <img class="credit-logo only-light" src="${ASSET_BASE}assets/favicon/Vostokfaviconblack.png" alt="" aria-hidden="true" />
+          Vostok Labs
+        </a>
+      </p>
     </div>
 
     <div class="section">
@@ -180,7 +178,29 @@ export function createUi(
     </div>
 
     <div class="section">
-      <span class="label">1 · Colors &amp; Smoothing</span>
+      <span class="label">Base style ${tip('Outline follows your image silhouette. Shape places the image on a preset base such as a circle or square.')}</span>
+      <div class="field">
+        <div class="tabs" id="shapeTypeTabs" role="tablist" style="margin-bottom: 12px;">
+          <button class="tab" data-style="outline" type="button">Outline</button>
+          <button class="tab" data-style="shape" type="button">Shape</button>
+        </div>
+      </div>
+      <div class="field" id="shapeSelectField" style="margin-bottom: 0;">
+        <label for="shapeSelect">Shape geometry ${tip('The preset base shape used when the Shape base style is selected.')}</label>
+        <select id="shapeSelect">
+          <option value="circle">Circle</option>
+          <option value="square">Square</option>
+          <option value="hexagon">Hexagon</option>
+          <option value="heart">Heart</option>
+          <option value="star">Star</option>
+          <option value="egg">Egg</option>
+        </select>
+      </div>
+    </div>
+
+    <details class="section section-collapsible" id="sectionColors">
+      <summary class="label collapsible-head">1 · Colors &amp; Smoothing</summary>
+      <div class="collapsible-body">
       <div class="field" id="colorCountField">
         <label for="ccount">Colors ${tip('How many distinct filament colors the image is split into. Each color becomes a separate part in the export.')}</label>
         <select id="ccount">
@@ -207,28 +227,12 @@ export function createUi(
       <div class="palette" id="palette">
         <div class="hint">Load an image/vector to pick colors.</div>
       </div>
-    </div>
+      </div>
+    </details>
 
-    <div class="section">
-      <span class="label">2 · Shape &amp; Size</span>
-      <div class="field">
-        <label>Base style ${tip('Outline follows your image silhouette. Shape places the image on a preset base such as a circle or square.')}</label>
-        <div class="tabs" id="shapeTypeTabs" role="tablist">
-          <button class="tab" data-style="outline" type="button">Outline</button>
-          <button class="tab" data-style="shape" type="button">Shape</button>
-        </div>
-      </div>
-      <div class="field" id="shapeSelectField">
-        <label for="shapeSelect">Shape geometry ${tip('The preset base shape used when the Shape base style is selected.')}</label>
-        <select id="shapeSelect">
-          <option value="circle">Circle</option>
-          <option value="square">Square</option>
-          <option value="hexagon">Hexagon</option>
-          <option value="heart">Heart</option>
-          <option value="star">Star</option>
-          <option value="egg">Egg</option>
-        </select>
-      </div>
+    <details class="section section-collapsible" id="sectionShape">
+      <summary class="label collapsible-head">2 · Shape &amp; Size</summary>
+      <div class="collapsible-body">
       <div class="prow-stacked">
         <div class="prow-header">
           <label for="width">Size ${tip('Overall size of the clicker (its longest side, in mm). This scales the whole model proportionally, not just the width.')}</label>
@@ -239,6 +243,36 @@ export function createUi(
       <div class="switch-row">
         <span class="switch-label">Keychain loop ${tip('Adds a small loop to the body so you can attach the clicker to a keychain.')}</span>
         <label class="toggle"><input id="keychain" type="checkbox" /><span class="slider"></span></label>
+      </div>
+
+      <div class="global-edges" id="globalEdges">
+        <span class="gedge-heading">Edges ${tip('Round (fillet) or bevel (chamfer) the outer edges. “Cap top” shapes the keycap’s top rim. “Clicker base” shapes the body’s top and bottom edges together.')}</span>
+        <div class="gedge-row">
+          <span class="gedge-name">Cap top</span>
+          <div class="edge-style-btns" data-edge="capTop">
+            <button class="edge-style-btn active" data-style="none" type="button">None</button>
+            <button class="edge-style-btn" data-style="fillet" type="button">Fillet</button>
+            <button class="edge-style-btn" data-style="chamfer" type="button">Chamfer</button>
+          </div>
+          <div class="edge-size-btns gedge-size" data-edge="capTop" style="display:none;">
+            <button class="btn edge-size-minus" type="button">−</button>
+            <span class="edge-size-val"></span>
+            <button class="btn edge-size-plus" type="button">+</button>
+          </div>
+        </div>
+        <div class="gedge-row">
+          <span class="gedge-name">Clicker base</span>
+          <div class="edge-style-btns" data-edge="clickerBase">
+            <button class="edge-style-btn active" data-style="none" type="button">None</button>
+            <button class="edge-style-btn" data-style="fillet" type="button">Fillet</button>
+            <button class="edge-style-btn" data-style="chamfer" type="button">Chamfer</button>
+          </div>
+          <div class="edge-size-btns gedge-size" data-edge="clickerBase" style="display:none;">
+            <button class="btn edge-size-minus" type="button">−</button>
+            <span class="edge-size-val"></span>
+            <button class="btn edge-size-plus" type="button">+</button>
+          </div>
+        </div>
       </div>
 
       <details class="more-settings">
@@ -267,7 +301,8 @@ export function createUi(
           </div>
         </div>
       </details>
-    </div>
+      </div>
+    </details>
   `;
 
   // Populate Right Sidebar (Import, Export)
@@ -389,6 +424,17 @@ export function createUi(
         <button id="saveProj" class="secondary">Save project</button>
         <button id="loadProj" class="secondary">Load project</button>
         <input type="file" id="projFile" accept="application/json" hidden />
+      </div>
+      <div class="btn-row footer-utility-row">
+        <button id="helpToggle" class="secondary utility-btn" type="button" aria-label="Show intro and help">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span>Help</span>
+        </button>
+        <button id="themeToggle" class="secondary utility-btn" type="button" aria-label="Toggle theme">
+          <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>
+          <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <span id="themeLabel">Dark mode</span>
+        </button>
       </div>
     </div>
   `;
@@ -776,6 +822,26 @@ export function createUi(
   const keychain = $<HTMLInputElement>('keychain');
   keychain.addEventListener('change', () => cb.onKeychain(keychain.checked));
 
+  // --- Global edges (Shape & Size): cap-top + clicker-base fillet/chamfer ---
+  const globalEdges = $('globalEdges');
+  globalEdges.addEventListener('click', (e) => {
+    const el = e.target as HTMLElement;
+    const styleBtn = el.closest('.edge-style-btn') as HTMLElement | null;
+    if (styleBtn) {
+      const btnsRow = styleBtn.closest('.edge-style-btns') as HTMLElement;
+      const target = btnsRow.dataset.edge;
+      if (target) cb.onEdgeStyle(target, styleBtn.dataset.style as EdgeStyle);
+      return;
+    }
+    const minus = el.closest('.edge-size-minus');
+    const plus = el.closest('.edge-size-plus');
+    if (minus || plus) {
+      const sizeRow = el.closest('.edge-size-btns') as HTMLElement;
+      const target = sizeRow.dataset.edge;
+      if (target) cb.onEdgeStep(target, minus ? -0.2 : 0.2);
+    }
+  });
+
   // --- Typeable value inputs: parse typed number, commit on Enter / blur ---
   function bindValInput(
     valId: string,
@@ -1050,11 +1116,10 @@ export function createUi(
     const bodyRow = document.createElement('div');
     bodyRow.className = 'fil-row body-row';
     bodyRow.innerHTML = `
-      <span class="slot-no">Body</span>
+      <span class="slot-no slot-body">Body</span>
       <span class="swatch" style="background:#787c82; opacity: 0.5;" title="default body color"></span>
       <span class="arrow">→</span>
       <button type="button" class="fil-chip" title="clicker body color" style="background:${rgbHex(bodyColorRgb)}"></button>
-      <span class="cov">Clicker Base</span>
     `;
 
     const bodyChip = bodyRow.querySelector('.fil-chip')!;
@@ -1261,59 +1326,91 @@ export function createUi(
       }
     }
 
-    // --- Edges panel ---
+    // --- Global edges (left sidebar, Shape & Size). Always kept in sync, since they
+    //     live outside the edit-mode panels. ---
+    const globalEdgesEl = document.getElementById('globalEdges');
+    if (globalEdgesEl) {
+      for (const target of ['capTop', 'clickerBase']) {
+        const es = state.edgeSettings.find(s => s.target === target) || { target, style: 'none' as EdgeStyle, radius: 0 };
+        const btnsRow = globalEdgesEl.querySelector(`.edge-style-btns[data-edge="${target}"]`) as HTMLElement | null;
+        const sizeRow = globalEdgesEl.querySelector(`.edge-size-btns[data-edge="${target}"]`) as HTMLElement | null;
+        if (btnsRow) {
+          btnsRow.querySelectorAll('.edge-style-btn').forEach(b => {
+            b.classList.toggle('active', (b as HTMLElement).dataset.style === es.style);
+          });
+        }
+        if (sizeRow) {
+          const valEl = sizeRow.querySelector('.edge-size-val') as HTMLElement | null;
+          if (es.style === 'none') {
+            sizeRow.style.display = 'none';
+          } else {
+            sizeRow.style.display = 'flex';
+            if (valEl) valEl.textContent = `${(es.radius ?? 1).toFixed(1)} mm`;
+          }
+        }
+      }
+    }
+
+    // --- Edges panel (floating): per-part edges only. Global cap/base edges now live
+    //     in the left sidebar, so with nothing selected we just prompt to pick a part. ---
     const edgesPanelEl = document.getElementById('edgesPanel');
     const edgesContentEl = document.getElementById('edgesContent');
     const edgesTitleEl = document.getElementById('edgesTitle');
     if (edgesPanelEl && edgesContentEl && edgesTitleEl) {
       if (state.editMode === 'edges') {
         edgesPanelEl.removeAttribute('hidden');
-        
-        // Build edge rows based on selected parts (or default globals if none selected)
-        let targets = state.selectedParts.length > 0 ? state.selectedParts : ['capTop', 'baseTop', 'baseBottom'];
-        edgesTitleEl.textContent = state.selectedParts.length > 0 ? 'Part Edges' : 'Global Edges';
-        
-        // Rebuild DOM only if targets changed (crude but effective)
-        const currentTargets = Array.from(edgesContentEl.querySelectorAll('.edge-style-btns')).map(r => (r as HTMLElement).dataset.edge);
-        if (targets.join(',') !== currentTargets.join(',')) {
-          edgesContentEl.innerHTML = targets.map(t => {
-            const label = friendlyTargetLabel(t);
-            return `
-              <div class="edge-label" title="${t}" style="margin-bottom: 4px;">${label} <span class="edge-radius-label" style="color:var(--muted);"></span></div>
-              <div class="edge-style-btns" data-edge="${t}" style="margin-bottom: 8px;">
-                <button class="edge-style-btn active" data-style="none" type="button">None</button>
-                <button class="edge-style-btn" data-style="fillet" type="button">Fillet</button>
-                <button class="edge-style-btn" data-style="chamfer" type="button">Chamfer</button>
-              </div>
-              <div class="edge-size-btns" data-edge="${t}" style="display:flex; gap:8px; margin-bottom: 12px; display: none;">
-                <button class="btn edge-size-minus" type="button" style="flex:1;">-</button>
-                <button class="btn edge-size-plus" type="button" style="flex:1;">+</button>
-              </div>
-            `;
-          }).join('');
-        }
-        
-        // Sync button state from edgeSettings
-        for (const target of targets) {
-          const defaultRadius = target === 'capTop' || target === 'baseTop' || target === 'baseBottom' ? 0 : 1.0;
-          const es = state.edgeSettings.find(s => s.target === target) || { target, style: 'none', radius: defaultRadius };
-          const btnsRow = edgesContentEl.querySelector(`.edge-style-btns[data-edge="${target}"]`) as HTMLElement;
-          const sizeRow = edgesContentEl.querySelector(`.edge-size-btns[data-edge="${target}"]`) as HTMLElement;
-          const labelRow = edgesContentEl.querySelector(`.edge-label[title="${target}"] .edge-radius-label`) as HTMLElement;
-          
-          if (btnsRow) {
-            btnsRow.querySelectorAll('.edge-style-btn').forEach(b => {
-              b.classList.toggle('active', (b as HTMLElement).dataset.style === es.style);
-            });
+
+        if (state.selectedParts.length === 0) {
+          edgesTitleEl.textContent = 'Edge Modifications';
+          if (!edgesContentEl.querySelector('.edges-empty')) {
+            edgesContentEl.innerHTML =
+              `<div class="edges-empty">Click a part on the model to round or bevel its top edge.<br/>Cap &amp; base edges are in the left panel, under <strong>Shape &amp; Size</strong>.</div>`;
           }
-          if (sizeRow && labelRow) {
-            if (es.style === 'none') {
-               sizeRow.style.display = 'none';
-               labelRow.textContent = '';
-            } else {
-               sizeRow.style.display = 'flex';
-               const safeRadius = es.radius !== undefined ? es.radius : 1.0;
-               labelRow.textContent = `(${safeRadius.toFixed(1)} mm)`;
+        } else {
+          const targets = state.selectedParts;
+          edgesTitleEl.textContent = 'Part Edges';
+
+          // Rebuild DOM only if targets changed (crude but effective)
+          const currentTargets = Array.from(edgesContentEl.querySelectorAll('.edge-style-btns')).map(r => (r as HTMLElement).dataset.edge);
+          if (targets.join(',') !== currentTargets.join(',')) {
+            edgesContentEl.innerHTML = targets.map(t => {
+              const label = friendlyTargetLabel(t);
+              return `
+                <div class="edge-label" title="${t}" style="margin-bottom: 4px;">${label} <span class="edge-radius-label" style="color:var(--muted);"></span></div>
+                <div class="edge-style-btns" data-edge="${t}" style="margin-bottom: 8px;">
+                  <button class="edge-style-btn active" data-style="none" type="button">None</button>
+                  <button class="edge-style-btn" data-style="fillet" type="button">Fillet</button>
+                  <button class="edge-style-btn" data-style="chamfer" type="button">Chamfer</button>
+                </div>
+                <div class="edge-size-btns" data-edge="${t}" style="gap:8px; margin-bottom: 12px; display: none;">
+                  <button class="btn edge-size-minus" type="button" style="flex:1;">-</button>
+                  <button class="btn edge-size-plus" type="button" style="flex:1;">+</button>
+                </div>
+              `;
+            }).join('');
+          }
+
+          // Sync button state from edgeSettings
+          for (const target of targets) {
+            const es = state.edgeSettings.find(s => s.target === target) || { target, style: 'none' as EdgeStyle, radius: 1.0 };
+            const btnsRow = edgesContentEl.querySelector(`.edge-style-btns[data-edge="${target}"]`) as HTMLElement;
+            const sizeRow = edgesContentEl.querySelector(`.edge-size-btns[data-edge="${target}"]`) as HTMLElement;
+            const labelRow = edgesContentEl.querySelector(`.edge-label[title="${target}"] .edge-radius-label`) as HTMLElement;
+
+            if (btnsRow) {
+              btnsRow.querySelectorAll('.edge-style-btn').forEach(b => {
+                b.classList.toggle('active', (b as HTMLElement).dataset.style === es.style);
+              });
+            }
+            if (sizeRow && labelRow) {
+              if (es.style === 'none') {
+                 sizeRow.style.display = 'none';
+                 labelRow.textContent = '';
+              } else {
+                 sizeRow.style.display = 'flex';
+                 const safeRadius = es.radius !== undefined ? es.radius : 1.0;
+                 labelRow.textContent = `(${safeRadius.toFixed(1)} mm)`;
+              }
             }
           }
         }

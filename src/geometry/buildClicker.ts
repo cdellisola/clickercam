@@ -168,69 +168,138 @@ export function buildClicker(
   };
 
   const makeStar = (r: number, points = 5): Section => {
-    const innerR = r * 0.4;
+    // Cute chubby star: short legs (high inner radius) with rounded tips AND valleys
+    // — not a spiky communist star.
+    const innerR = r * 0.56; // was 0.4 → long spikes; higher = shorter, fatter legs
     const pts: Ring = [];
     for (let i = 0; i < points * 2; i++) {
       const angle = (Math.PI / points) * i - Math.PI / 2;
       const radius = i % 2 === 0 ? r : innerR;
       pts.push([Math.cos(angle) * radius, Math.sin(angle) * radius]);
     }
-    return track(new CrossSection([pts], 'NonZero'));
+    const sharp = track(new CrossSection([pts], 'NonZero'));
+    // Opening-then-closing (−rr, +2rr, −rr nets to zero size) rounds the convex tips
+    // and the concave valleys while keeping the star's overall radius.
+    const rr = r * 0.13;
+    const a = track(sharp.offset(-rr, 'Round', 2.0, 64));
+    const b = track(a.offset(2 * rr, 'Round', 2.0, 64));
+    return track(b.offset(-rr, 'Round', 2.0, 64));
   };
 
   const makeHeart = (r: number): Section => {
-    const pts: Ring = [];
-    const steps = 64;
-    for (let i = 0; i < steps; i++) {
-      const t = (Math.PI * 2 * i) / steps;
-      const x = Math.sin(t);
-      const y = Math.cos(t) + Math.pow(Math.abs(Math.sin(t)), 0.6) * 0.8 - 0.2;
-      pts.push([x * r, y * r]);
-    }
-    return track(new CrossSection([pts], 'NonZero'));
+    // Emoji-style heart: two genuinely round circular lobes on top, unioned with a
+    // diamond (a square rotated 45°) whose lower edges form the bottom point. This
+    // is the classic "two circles + square" construction. Built in raw units with
+    // the point at the origin, then centered and scaled to fit within radius r.
+    const h = 1 / Math.SQRT2; // half-diagonal of a unit-side square
+    const lobeR = 0.5; // each top edge of the square is a lobe diameter
+    const lobeX = h / 2; // lobe centers sit on the midpoints of the top edges
+    const lobeY = 1.5 * h;
+    const maxX = lobeX + lobeR; // raw bbox half-width
+    const cy = (lobeY + lobeR) / 2; // raw bbox vertical centre
+    const scale = r / Math.max(maxX, cy);
+    const seg = 128;
+    const circleRing = (ox: number): Ring => {
+      const ring: Ring = [];
+      for (let i = 0; i < seg; i++) {
+        const a = (Math.PI * 2 * i) / seg;
+        ring.push([
+          (ox + lobeR * Math.cos(a)) * scale,
+          (lobeY - cy + lobeR * Math.sin(a)) * scale,
+        ]);
+      }
+      return ring;
+    };
+    const diamondRing: Ring = [
+      [0, (0 - cy) * scale],
+      [h * scale, (h - cy) * scale],
+      [0, (2 * h - cy) * scale],
+      [-h * scale, (h - cy) * scale],
+    ];
+    const diamond = track(new CrossSection([diamondRing], 'NonZero'));
+    const lobeL = track(new CrossSection([circleRing(-lobeX)], 'NonZero'));
+    const lobeR2 = track(new CrossSection([circleRing(lobeX)], 'NonZero'));
+    return track(track(diamond.add(lobeL)).add(lobeR2));
   };
 
   const makeEgg = (r: number): Section => {
-    const pts: Ring = [];
-    const steps = 64;
+    // Chicken-egg profile: an upright oval, taller than wide, with a rounder/fatter
+    // bottom and a narrower top. `width` sets the aspect ratio; `taper` tapers the
+    // width from bottom (fatter) to top (narrower) so the widest point sits below
+    // centre, like a real egg.
+    const steps = 96;
+    const width = 0.74; // half-width vs half-height (egg is taller than wide)
+    const taper = 0.26; // top-vs-bottom narrowing
+    const raw: [number, number][] = [];
     for (let i = 0; i < steps; i++) {
       const t = (Math.PI * 2 * i) / steps;
-      const px = r * Math.cos(t);
-      const py = r * Math.sin(t);
-      const xShape = px * (1 - 0.2 * Math.sin(t));
-      pts.push([xShape, py]);
+      const y = r * Math.sin(t);
+      const x = r * width * Math.cos(t) * (1 - taper * Math.sin(t));
+      raw.push([x, y]);
     }
+    // Recenter on the area centroid so content at the origin (image + switch) sits at
+    // the egg's visual centre of mass — the lower bulb — instead of the taller
+    // geometric mid-line, which reads as sitting too high.
+    let area = 0, cx = 0, cy = 0;
+    for (let i = 0, j = raw.length - 1; i < raw.length; j = i++) {
+      const cross = raw[j][0] * raw[i][1] - raw[i][0] * raw[j][1];
+      area += cross;
+      cx += (raw[j][0] + raw[i][0]) * cross;
+      cy += (raw[j][1] + raw[i][1]) * cross;
+    }
+    area *= 0.5;
+    cx /= 6 * area;
+    cy /= 6 * area;
+    const pts: Ring = raw.map(([x, y]) => [x - cx, y - cy]);
     return track(new CrossSection([pts], 'NonZero'));
   };
 
   // --- Cap plate footprint (the visible top; image + frame) ---
   let plate: Section;
-  if (params.baseShape === 'circle') {
-    const d = Math.max(Math.hypot(imgW, imgH) + 2 * border, minCap);
-    plate = track(CrossSection.circle(d / 2, 160));
-  } else if (params.baseShape === 'square') {
-    const size = Math.max(Math.max(imgW, imgH) + 2 * border, minCap);
-    plate = roundedRect(size, size, size * 0.22);
-  } else if (params.baseShape === 'hexagon') {
-    const d = Math.max(Math.hypot(imgW, imgH) + 2 * border, minCap);
-    plate = makeHexagon(d / 2);
-  } else if (params.baseShape === 'heart') {
-    const d = Math.max(Math.hypot(imgW, imgH) + 2 * border, minCap);
-    plate = makeHeart(d / 2);
-  } else if (params.baseShape === 'star') {
-    const d = Math.max(Math.hypot(imgW, imgH) + 2 * border, minCap);
-    plate = makeStar(d / 2);
-  } else if (params.baseShape === 'egg') {
-    const d = Math.max(Math.hypot(imgW, imgH) + 2 * border, minCap);
-    plate = makeEgg(d / 2);
-  } else {
+  if (params.baseShape === 'outline') {
     const rawPlate = track(filledOutline().offset(border, 'Round', 2.0, 48));
     const solidPlate = removeHoles(rawPlate);
-    // Apply morphological closing (+offset followed by -offset) to smooth out 
+    // Apply morphological closing (+offset followed by -offset) to smooth out
     // deep scalloped indentations between letters. This prevents the clicker
     // from binding or sticking due to excessive friction in the sharp valleys.
     const smoothingRadius = 4.0;
     plate = track(solidPlate.offset(smoothingRadius, 'Round', 2.0, 48).offset(-smoothingRadius, 'Round', 2.0, 48));
+  } else {
+    // The geometric shapes scale linearly with their radius, so rather than guessing
+    // a circumscribing radius (which clips the image on concave shapes like the star
+    // or heart), we scale the shape up just enough that the whole image PLUS the
+    // border frame fits inside it.
+    const genShape = (rr: number): Section => {
+      switch (params.baseShape) {
+        case 'square': return roundedRect(2 * rr, 2 * rr, 2 * rr * 0.22);
+        case 'hexagon': return makeHexagon(rr);
+        case 'heart': return makeHeart(rr);
+        case 'star': return makeStar(rr);
+        case 'egg': return makeEgg(rr);
+        case 'circle':
+        default: return track(CrossSection.circle(rr, 160));
+      }
+    };
+    // Rectangle (half-extents) that must sit inside the plate: image + border, with a
+    // floor so tiny images still produce a sensible cap.
+    const halfW = Math.max(imgW / 2 + border, minCap / 2);
+    const halfH = Math.max(imgH / 2 + border, minCap / 2);
+    const unit = genShape(1); // test the image rect against the r = 1 shape
+    const fits = (k: number): boolean => {
+      const rect = track(CrossSection.square([(2 * halfW) / k, (2 * halfH) / k], true));
+      const outside = track(rect.subtract(unit));
+      return sectionIsEmpty(outside);
+    };
+    // Bracket an upper bound that fits, then binary-search the smallest radius.
+    let hi = Math.max(1, Math.hypot(halfW, halfH));
+    for (let i = 0; i < 40 && !fits(hi); i++) hi *= 2;
+    let lo = 1e-3;
+    for (let i = 0; i < 26; i++) {
+      const mid = (lo + hi) / 2;
+      if (fits(mid)) hi = mid;
+      else lo = mid;
+    }
+    plate = genShape(hi);
   }
 
   const imageArea = shrink(plate, border, plate); // flat frame around the image
@@ -472,9 +541,10 @@ export function buildClicker(
   return parts;
 
   /** Apply fillet/chamfer edge modifications to the body solid.
-   *  Targets: 'baseTop'/'baseBottom' are the global body edges; 'base-body' is the
-   *  body part selected directly in Edges mode (rounds its top rim). Cap and inlay
-   *  targets are handled elsewhere. */
+   *  Targets: 'clickerBase' is the merged global control that bevels the body's top
+   *  AND bottom edges together; 'baseTop'/'baseBottom' remain for older saved projects;
+   *  'base-body' is the body part selected directly in Edges mode (rounds its top rim).
+   *  Cap and inlay targets are handled elsewhere. */
   function applyEdges(
     bodyIn: Solid,
     edgeSettings: EdgeSetting[],
@@ -486,16 +556,17 @@ export function buildClicker(
     let result = bodyIn;
     for (const es of edgeSettings) {
       if (es.style === 'none' || es.radius < 0.05) continue;
-      const isBodyTop = es.target === 'baseTop' || es.target === 'base-body';
-      const isBodyBottom = es.target === 'baseBottom';
-      if (!isBodyTop && !isBodyBottom) continue; // cap / inlay targets handled elsewhere
+      const doBodyTop = es.target === 'baseTop' || es.target === 'base-body' || es.target === 'clickerBase';
+      const doBodyBottom = es.target === 'baseBottom' || es.target === 'clickerBase';
+      if (!doBodyTop && !doBodyBottom) continue; // cap / inlay targets handled elsewhere
       const r = Math.min(es.radius, (topZ - bottomZ) * 0.3, 2.5);
       if (r < 0.05) continue;
 
-      if (isBodyTop) {
+      if (doBodyTop) {
         const modBlock = createEdgeBevelBlock(footprint, r, es.style, topZ, false);
         if (modBlock) result = track(result.subtract(modBlock));
-      } else {
+      }
+      if (doBodyBottom) {
         const modBlock = createEdgeBevelBlock(footprint, r, es.style, bottomZ, true);
         if (modBlock) result = track(result.subtract(modBlock));
       }
