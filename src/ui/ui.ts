@@ -21,6 +21,7 @@ export interface UiState {
   topThickness: number;
   imageDepth: number;
   tolerance: number;
+  baseWallThickness: number;
   smoothing: number;
   keychain: boolean;
   removeBg: boolean;
@@ -63,6 +64,7 @@ export interface UiCallbacks {
   onTopThickness(mm: number): void;
   onImageDepth(mm: number): void;
   onTolerance(mm: number): void;
+  onBaseWallThickness(mm: number): void;
   onKeychain(on: boolean): void;
   onRemoveBg(on: boolean): void;
   onView(mode: ViewMode): void;
@@ -299,6 +301,13 @@ export function createUi(
           </div>
           <input type="range" id="tol" min="0.2" max="0.8" step="0.05" />
         </div>
+        <div class="prow-stacked">
+          <div class="prow-header">
+            <label for="basewall">Base wall thickness ${tip('Thickness of the outer border wall around the base body, in mm.')}</label>
+            <input type="text" class="val" id="basewallVal" />
+          </div>
+          <input type="range" id="basewall" min="1.0" max="6.0" step="0.1" />
+        </div>
         </div>
       </details>
     </div>
@@ -316,18 +325,6 @@ export function createUi(
         </button>
       </div>
     </div>
-
-    <div class="setting-row">
-  <label for="input-base-wall-thickness">Spessore Parete Base (mm)</label>
-  <input 
-    type="number" 
-    id="input-base-wall-thickness" 
-    min="0.8" 
-    max="5.0" 
-    step="0.1" 
-    value="${settings.baseWallThickness}" 
-  />
-</div>
   `;
 
   // Populate Right Sidebar (Import, Export)
@@ -378,7 +375,6 @@ export function createUi(
         </button>
       </div>
 
-      <!-- Image Panel -->
       <div id="imagePanel" class="mode-panel">
         <div class="drop" id="drop">
           <svg class="drop-icon" xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -406,7 +402,6 @@ export function createUi(
         </div>
       </div>
 
-      <!-- SVG Panel -->
       <div id="svgPanel" class="mode-panel" hidden>
         <p class="hint-text">
           Drop or upload SVG vector files. Color paths will map to filament slots.
@@ -420,7 +415,6 @@ export function createUi(
         <button class="primary" id="generateSvg" style="margin-top: 10px; width: 100%;">Generate</button>
       </div>
 
-      <!-- Icon Panel -->
       <div id="iconPanel" class="mode-panel" hidden>
         <div id="iconSearchWrap">
           <input id="iconSearch" type="search" placeholder="Search Lucide icons…" autocomplete="off" spellcheck="false" />
@@ -431,7 +425,6 @@ export function createUi(
         <button class="primary" id="generateIcon" style="margin-top: 10px; width: 100%;">Generate</button>
       </div>
 
-      <!-- Text Panel -->
       <div id="letterPanel" class="mode-panel" hidden>
         <div class="field">
           <label for="letterText">Custom Text</label>
@@ -856,6 +849,8 @@ export function createUi(
   imgdepth.addEventListener('input', () => cb.onImageDepth(+imgdepth.value));
   const tol = $<HTMLInputElement>('tol');
   tol.addEventListener('input', () => cb.onTolerance(+tol.value));
+  const basewall = $<HTMLInputElement>('basewall');
+  basewall.addEventListener('input', () => cb.onBaseWallThickness(+basewall.value));
   const keychain = $<HTMLInputElement>('keychain');
   keychain.addEventListener('change', () => cb.onKeychain(keychain.checked));
 
@@ -907,6 +902,7 @@ export function createUi(
   bindValInput('topthickVal', topthick, cb.onTopThickness);
   bindValInput('imgdepthVal', imgdepth, cb.onImageDepth);
   bindValInput('tolVal', tol, cb.onTolerance);
+  bindValInput('basewallVal', basewall, cb.onBaseWallThickness);
 
   // --- View tabs ---
   const viewTabs = $('viewTabs');
