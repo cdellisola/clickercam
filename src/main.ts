@@ -48,6 +48,7 @@ const store = createStore<UiState>({
   topThickness: 1.5,
   imageDepth: 0.8,
   tolerance: 0.4,
+  baseWallThickness: 2.6,
   smoothing: 0.1,
   keychain: false,
   removeBg: true,
@@ -143,6 +144,10 @@ const ui = createUi(sidebarLeft, sidebarRight, statusEl, {
   },
   onTolerance: (mm) => {
     store.set({ tolerance: mm });
+    debouncedRebuild();
+  },
+  onBaseWallThickness: (mm) => {
+    store.set({ baseWallThickness: mm });
     debouncedRebuild();
   },
   onKeychain: (on) => {
@@ -321,7 +326,7 @@ const ui = createUi(sidebarLeft, sidebarRight, statusEl, {
 const HISTORY_FIELDS = [
   'palette', 'paletteOverrides', 'partOverrides', 'bodyColorRgb', 'baseColorOverride',
   'componentHeights', 'edgeSettings', 'baseShape', 'capWidthMm', 'topThickness',
-  'imageDepth', 'tolerance', 'keychain',
+  'imageDepth', 'tolerance', 'baseWallThickness', 'keychain',
 ] as const;
 let history: string[] = [];
 let histIndex = -1;
@@ -832,7 +837,7 @@ function rebuild(quiet = false) {
     topThickness: Math.max(1, s.topThickness),
     imageDepth: s.imageDepth,
     imageMargin: isText ? 2.5 : 1.2,
-    borderWidth: isText ? 3.5 : 2.6,
+    borderWidth: s.baseWallThickness ?? (isText ? 3.5 : 2.6),
     capProud: 4.0,
     tolerance: s.tolerance,
     colorBleed: 0.12,
@@ -1005,6 +1010,7 @@ function saveProject() {
       topThickness: s.topThickness,
       imageDepth: s.imageDepth,
       tolerance: s.tolerance,
+      baseWallThickness: s.baseWallThickness,
       smoothing: s.smoothing,
       removeBg: s.removeBg,
       importMode: s.importMode,
@@ -1055,6 +1061,7 @@ async function loadProject(file: File) {
       topThickness: set.topThickness ?? store.get().topThickness,
       imageDepth: set.imageDepth ?? store.get().imageDepth,
       tolerance: set.tolerance ?? store.get().tolerance,
+      baseWallThickness: set.baseWallThickness ?? store.get().baseWallThickness,
       smoothing: set.smoothing ?? store.get().smoothing,
       removeBg: set.removeBg ?? store.get().removeBg,
       currentIconName: currentIconName || 'circle',
