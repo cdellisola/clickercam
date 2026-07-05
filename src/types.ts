@@ -24,7 +24,7 @@ export const FILAMENTS: [string, string][] = [
 export type Ring = [number, number][];
 
 /** Normalized 2D geometry: silhouette fits within a unit box (longest side = 1),
- *  centered on origin, Y-up. Worker scales by capWidthMm. */
+ * centered on origin, Y-up. Worker scales by capWidthMm. */
 export interface RegionSet {
   /** One entry per palette color actually used. */
   regions: { quantRgb: RGB; components: { rings: Ring[]; coverage: number }[]; coverage: number }[];
@@ -74,7 +74,6 @@ export interface PreprocessParams {
   whiteBalance: number;
   highlights: number;
   shadows: number;
-  baseWallThickness: number; // Spessore della parete in mm
 }
 
 export const DEFAULT_PREPROCESS: PreprocessParams = {
@@ -91,8 +90,8 @@ export const DEFAULT_PREPROCESS: PreprocessParams = {
 };
 
 /** Parameters the geometry worker needs to build the clicker (all mm).
- *  Design: the BODY is a solid block with a recessed well + raised border cut
- *  into the top; the cap nests INSIDE that well (button-in-bezel). */
+ * Design: the BODY is a solid block with a recessed well + raised border cut
+ * into the top; the cap nests INSIDE that well (button-in-bezel). */
 export interface BuildParams {
   baseShape: BaseShapeKind;
   capWidthMm: number; // the cap (top) footprint; body = cap + tolerance + border
