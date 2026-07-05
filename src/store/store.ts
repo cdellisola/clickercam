@@ -1,32 +1,44 @@
-// Tiny reactive store — the single source of truth for the app.
-// No framework: subscribe for changes, patch with set().
+// src/store/store.ts
+import type { ClickerSettings } from '../types';
 
-export type Listener<T> = (state: T) => void;
-
-export const DEFAULT_SETTINGS: ClickerSettings = {
-  // ... altri valori di default
-  baseWallThickness: 2.0, // Impostiamo 2mm come spessore iniziale standard
-};
-
-export interface Store<T> {
-  get(): T;
-  set(patch: Partial<T> | ((s: T) => Partial<T>)): void;
-  subscribe(listener: Listener<T>): () => void;
+export interface UiState extends ClickerSettings {
+  status: string;
+  building: boolean;
+  hasParts: boolean;
+  colorCount: number;
+  palette: any[];
+  view: any;
+  showSwitch: boolean;
+  importMode: 'image' | 'svg' | 'icon' | 'text';
+  currentIconName: string;
+  colorMode: 'normal' | 'limited';
+  limitedColors: any[];
+  bodyColorRgb: any;
+  paletteOverrides: any[];
+  baseColorOverride: any | null;
+  partOverrides: Record<string, any>;
+  editMode: any;
+  edgeSettings: any[];
+  extrudeHeight: number | null;
+  componentHeights: Record<string, number>;
+  selectedParts: string[];
+  canUndo: boolean;
+  canRedo: boolean;
+  canRefresh: boolean;
 }
 
-export function createStore<T extends object>(initial: T): Store<T> {
+export function createStore<T>(initial: T) {
   let state = initial;
-  const listeners = new Set<Listener<T>>();
+  const subs = new Set<(s: T) => void>();
   return {
     get: () => state,
-    set(patch) {
-      const p = typeof patch === 'function' ? patch(state) : patch;
-      state = { ...state, ...p };
-      for (const l of listeners) l(state);
+    set: (update: Partial<T>) => {
+      state = { ...state, ...update };
+      subs.forEach((s) => s(state));
     },
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
+    subscribe: (fn: (s: T) => void) => {
+      subs.add(fn);
+      fn(state);
+    }
   };
 }
