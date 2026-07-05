@@ -74,6 +74,7 @@ export interface PreprocessParams {
   whiteBalance: number;
   highlights: number;
   shadows: number;
+  baseWallThickness: number; // Spessore della parete in mm
 }
 
 export const DEFAULT_PREPROCESS: PreprocessParams = {
