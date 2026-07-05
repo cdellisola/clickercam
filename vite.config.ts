@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 // Relative base so the static build works on ANY GitHub Pages URL
 // (user/org page at '/', or a project page at '/<repo>/') with no reconfig.
 export default defineConfig({
-  base: './',
+  base: '/clickercam/',
   worker: {
     format: 'es',
   },
