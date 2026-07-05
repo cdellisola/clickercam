@@ -3,6 +3,11 @@
 
 export type Listener<T> = (state: T) => void;
 
+export const DEFAULT_SETTINGS: ClickerSettings = {
+  // ... altri valori di default
+  baseWallThickness: 2.0, // Impostiamo 2mm come spessore iniziale standard
+};
+
 export interface Store<T> {
   get(): T;
   set(patch: Partial<T> | ((s: T) => Partial<T>)): void;
