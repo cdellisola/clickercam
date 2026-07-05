@@ -1,6 +1,21 @@
 // Shared types. See DEV_PLAN.md §4 for the full target data model; this is the
 // walking-skeleton subset.
 
+// src/types.ts
+export type RGB = [number, number, number];
+
+export interface ClickerSettings {
+  baseShape: BaseShapeKind;
+  capWidthMm: number;
+  topThickness: number;
+  imageDepth: number;
+  tolerance: number;
+  baseWallThickness: number; // Aggiunto qui
+  keychain: boolean;
+  smoothing: number;
+  removeBg: boolean;
+}
+
 export type RGB = [number, number, number];
 
 export const FILAMENTS: [string, string][] = [
