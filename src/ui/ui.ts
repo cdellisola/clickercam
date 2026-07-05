@@ -316,6 +316,18 @@ export function createUi(
         </button>
       </div>
     </div>
+
+    <div class="setting-row">
+  <label for="input-base-wall-thickness">Spessore Parete Base (mm)</label>
+  <input 
+    type="number" 
+    id="input-base-wall-thickness" 
+    min="0.8" 
+    max="5.0" 
+    step="0.1" 
+    value="${settings.baseWallThickness}" 
+  />
+</div>
   `;
 
   // Populate Right Sidebar (Import, Export)
